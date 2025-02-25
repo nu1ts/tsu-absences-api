@@ -1,0 +1,6 @@
+﻿services:
+  tsu-absences-api:
+    image: tsu-absences-api
+    build:
+      context: .
+      dockerfile: Dockerfile
