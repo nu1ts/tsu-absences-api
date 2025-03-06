@@ -19,9 +19,17 @@ public class AbsencesController(IAbsenceService absenceService, IUserService use
             var absence = await absenceService.CreateAbsenceAsync(userId, dto);
             return Ok(absence.Id);
         }
-        catch (Exception ex)
+        catch (ArgumentException ex)
         {
             return BadRequest(new { error = ex.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Unauthorized(new { error = "You are not authorized." });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = "Internal Server Error", details = ex.Message });
         }
     }
 }

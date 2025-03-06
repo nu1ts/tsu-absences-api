@@ -7,9 +7,10 @@ using tsu_absences_api.Services;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddScoped<IAbsenceService, AbsenceService>();
+builder.Services.AddScoped<IFileService, FileService>();
 
 // заглушки
-builder.Services.AddScoped<IFileService, MockFileService>();
+//builder.Services.AddScoped<IFileService, MockFileService>();
 builder.Services.AddScoped<IUserService, MockUserService>();
 
 builder.Services

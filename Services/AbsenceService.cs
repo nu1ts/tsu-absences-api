@@ -12,7 +12,7 @@ public class AbsenceService(AppDbContext context, IFileService fileService) : IA
     {
         if (dto.Type != AbsenceType.Family && dto.DeclarationToDean)
         {
-            throw new Exception("Заявление в деканат доступно только для типа заявки 'Семейные обстоятельства'.");
+            throw new Exception("A declaration to the dean's office is only allowed for 'Family' absence type.");
         }
         
         switch (dto.Type)
@@ -20,14 +20,14 @@ public class AbsenceService(AppDbContext context, IFileService fileService) : IA
             case AbsenceType.Academic:
                 if (dto.Documents == null || dto.Documents.Count == 0)
                 {
-                    throw new Exception("Для учебного пропуска обязателен документ.");
+                    throw new Exception("A document is required for an academic absence.");
                 }
                 break;
 
             case AbsenceType.Family:
                 if (!dto.DeclarationToDean)
                 {
-                    throw new Exception("Для семейных обстоятельств необходимо подать заявление в деканат.");
+                    throw new Exception("A declaration to the dean's office is required for family.");
                 }
                 break;
 
@@ -35,7 +35,7 @@ public class AbsenceService(AppDbContext context, IFileService fileService) : IA
                 break;
 
             default:
-                throw new Exception("Неверный тип отсутствия.");
+                throw new Exception("Invalid absence type.");
         }
 
         var absence = new Absence
