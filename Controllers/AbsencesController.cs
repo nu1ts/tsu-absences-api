@@ -8,7 +8,7 @@ namespace tsu_absences_api.Controllers;
 //[Authorize(Roles = "Student")]
 [ApiController]
 [Route("api/absences")]
-public class AbsencesController(IAbsenceService absenceService, IUserService userService) : ControllerBase
+public class AbsencesController(IAbsenceService absenceService, IUserService userService, IFileService fileService) : ControllerBase
 {
     [HttpPost]
     public async Task<IActionResult> CreateAbsence([FromForm] CreateAbsenceDto dto)
