@@ -19,11 +19,11 @@ namespace tsu_absences_api.Migrations
                     Id = table.Column<Guid>(type: "uuid", nullable: false),
                     UserId = table.Column<Guid>(type: "uuid", nullable: false),
                     Type = table.Column<int>(type: "integer", nullable: false),
-                    StartDate = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    StartDate = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
                     EndDate = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
                     Status = table.Column<int>(type: "integer", nullable: false),
                     DeclarationToDean = table.Column<bool>(type: "boolean", nullable: false),
-                    Documents = table.Column<List<Guid>>(type: "uuid[]", nullable: false)
+                    Documents = table.Column<List<Guid>>(type: "uuid[]", nullable: true)
                 },
                 constraints: table =>
                 {

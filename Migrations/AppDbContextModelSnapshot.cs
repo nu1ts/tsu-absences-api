@@ -33,13 +33,12 @@ namespace tsu_absences_api.Migrations
                         .HasColumnType("boolean");
 
                     b.PrimitiveCollection<List<Guid>>("Documents")
-                        .IsRequired()
                         .HasColumnType("uuid[]");
 
                     b.Property<DateTime?>("EndDate")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<DateTime>("StartDate")
+                    b.Property<DateTime?>("StartDate")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("Status")

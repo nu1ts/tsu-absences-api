@@ -13,7 +13,7 @@ using tsu_absences_api.Data;
 namespace tsu_absences_api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20250305205940_AddAbsenceAndDocumentsTable")]
+    [Migration("20250310190209_AddAbsenceAndDocumentsTable")]
     partial class AddAbsenceAndDocumentsTable
     {
         /// <inheritdoc />
@@ -36,13 +36,12 @@ namespace tsu_absences_api.Migrations
                         .HasColumnType("boolean");
 
                     b.PrimitiveCollection<List<Guid>>("Documents")
-                        .IsRequired()
                         .HasColumnType("uuid[]");
 
                     b.Property<DateTime?>("EndDate")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<DateTime>("StartDate")
+                    b.Property<DateTime?>("StartDate")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("Status")

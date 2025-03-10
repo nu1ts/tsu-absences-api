@@ -4,6 +4,7 @@ namespace tsu_absences_api.Models;
 
 public class Document
 {
+    [Required]
     public Guid Id { get; set; }
 
     [Required]
