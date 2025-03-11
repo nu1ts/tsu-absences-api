@@ -50,24 +50,20 @@ public class AbsenceService(AppDbContext context, IFileService fileService) : IA
         return absence;
     }
 
-    public async Task UpdateAbsenceAsync(Guid id, Guid userId, bool isDeanOffice, UpdateAbsenceDto dto)
+    public async Task UpdateAbsenceAsync(Guid userId, UpdateAbsenceDto dto, Guid id, bool isDeanOffice)
     {
         var absence = await context.Absences.FindAsync(id);
-
         if (absence == null)
-        {
             throw new KeyNotFoundException("Absence not found.");
-        }
+
+        if (absence.Status == AbsenceStatus.Rejected)
+            throw new ForbiddenAccessException("You can't edit a rejected absence.");
 
         if (absence.Status != AbsenceStatus.Pending && !(isDeanOffice && absence.Type == AbsenceType.Academic))
-        {
-            throw new ForbiddenAccessException("You do not have permission to edit this absence.");
-        }
+            throw new ForbiddenAccessException("You don't have permission to edit this absence.");
 
         if (absence.UserId != userId && !isDeanOffice)
-        {
-            throw new ForbiddenAccessException("You do not have permission to edit this absence.");
-        }
+            throw new ForbiddenAccessException("You don't have permission to edit this absence.");
 
         ValidateAbsenceDto(absence.Type, dto.StartDate, dto.EndDate, dto.Documents, dto.DeclarationToDean);
 
@@ -77,35 +73,42 @@ public class AbsenceService(AppDbContext context, IFileService fileService) : IA
         if (dto.DeclarationToDean.HasValue)
             absence.DeclarationToDean = dto.DeclarationToDean.Value;
         
-        if (dto.RemovedDocuments?.Count > 0)
+        var existingDocuments = await context.Documents
+            .Where(d => d.AbsenceId == absence.Id)
+            .ToListAsync();
+
+        var existingFileNames = existingDocuments.Select(d => d.FileName).ToHashSet();
+        var newFileNames = dto.Documents?.Select(f => f.FileName).ToHashSet() ?? [];
+        
+        var filesToDelete = existingDocuments.Where(d => !newFileNames.Contains(d.FileName)).ToList();
+        foreach (var file in filesToDelete)
         {
-            foreach (var documentId in dto.RemovedDocuments)
-            {
-                await fileService.DeleteFileAsync(documentId, userId, isDeanOffice);
-                absence.Documents.Remove(documentId);
-            }
+            await fileService.DeleteFileAsync(file.Id, userId, isDeanOffice);
+            absence.Documents.Remove(file.Id);
         }
         
         if (dto.Documents?.Count > 0)
         {
             foreach (var file in dto.Documents)
             {
-                var filePath = await fileService.SaveFileAsync(file);
-                var document = new Document
+                if (!existingFileNames.Contains(file.FileName))
                 {
-                    Id = Guid.NewGuid(),
-                    AbsenceId = absence.Id,
-                    FileName = file.FileName,
-                    FilePath = filePath
-                };
-                context.Documents.Add(document);
-                absence.Documents.Add(document.Id);
+                    var filePath = await fileService.SaveFileAsync(file);
+                    var document = new Document
+                    {
+                        Id = Guid.NewGuid(),
+                        AbsenceId = absence.Id,
+                        FileName = file.FileName,
+                        FilePath = filePath
+                    };
+                    context.Documents.Add(document);
+                    absence.Documents.Add(document.Id);
+                }
             }
         }
 
         await context.SaveChangesAsync();
     }
-
 
     private static void ValidateAbsenceDto(AbsenceType type, DateTime? startDate, DateTime? endDate, List<IFormFile>? documents, bool? declarationToDean)
     {
@@ -114,25 +117,33 @@ public class AbsenceService(AppDbContext context, IFileService fileService) : IA
             case AbsenceType.Sick:
                 if (!startDate.HasValue)
                 {
-                    throw new ArgumentException("Start date is required for sick absences.");
+                    throw new ArgumentException("Field 'StartDate' is required for 'Sick' absence type.");
+                }
+                if (declarationToDean == true)
+                {
+                    throw new ArgumentException("Field 'DeclarationToDean' is not allowed for 'Sick' absence type.");
                 }
                 break;
 
             case AbsenceType.Academic:
                 if (!startDate.HasValue || !endDate.HasValue)
                 {
-                    throw new ArgumentException("Start and end dates are required for academic absences.");
+                    throw new ArgumentException("Field 'StartDate' and 'EndDate' are required for 'Academic' absence type.");
                 }
                 if (documents == null || documents.Count == 0)
                 {
-                    throw new ArgumentException("Academic absences require at least one document.");
+                    throw new ArgumentException("'Academic' absence type requires at least one document.");
+                }
+                if (declarationToDean == true)
+                {
+                    throw new ArgumentException("Field 'DeclarationToDean' is not allowed for 'Academic' absence type.");
                 }
                 break;
 
             case AbsenceType.Family:
                 if ((documents == null || documents.Count == 0) && !(declarationToDean.HasValue && declarationToDean.Value))
                 {
-                    throw new ArgumentException("For family absences, 'DeclarationToDean' must be true if no documents are provided.");
+                    throw new ArgumentException("Field 'DeclarationToDean' must be true for 'Family' absence type if no documents are provided.");
                 }
                 break;
 

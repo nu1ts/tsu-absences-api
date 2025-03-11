@@ -8,5 +8,4 @@ public class UpdateAbsenceDto
     public DateTime? EndDate { get; set; }
     public bool? DeclarationToDean { get; set; }
     public List<IFormFile>? Documents { get; set; }
-    public List<Guid>? RemovedDocuments { get; set; }
 }

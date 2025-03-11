@@ -68,7 +68,7 @@ public class FileService(AppDbContext context) : IFileService
 
         if (absence.UserId != userId && !isDeanOffice)
         {
-            throw new UnauthorizedAccessException("You do not have permission to access this file.");
+            throw new UnauthorizedAccessException("You don't have permission to access this file.");
         }
 
         var filePath = Path.Combine(_storagePath, document.FilePath);
@@ -113,7 +113,7 @@ public class FileService(AppDbContext context) : IFileService
         
         if (absence.UserId != userId && !isDeanOffice)
         {
-            throw new UnauthorizedAccessException("You do not have permission to delete this file.");
+            throw new UnauthorizedAccessException("You don't have permission to delete this file.");
         }
 
         var filePath = Path.Combine(_storagePath, document.FilePath);
