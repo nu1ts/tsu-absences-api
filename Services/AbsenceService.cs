@@ -14,6 +14,8 @@ public class AbsenceService(AppDbContext context, IFileService fileService) : IA
     {
         ValidateAbsenceDto(dto.Type, dto.StartDate, dto.EndDate, dto.Documents, dto.DeclarationToDean);
 
+        var now = DateTime.UtcNow;
+
         var absence = new Absence
         {
             Id = Guid.NewGuid(),
@@ -23,7 +25,9 @@ public class AbsenceService(AppDbContext context, IFileService fileService) : IA
             EndDate = dto.EndDate,
             Status = AbsenceStatus.Pending,
             DeclarationToDean = dto.DeclarationToDean,
-            Documents = []
+            Documents = [],
+            CreatedAt = now,
+            UpdatedAt = now
         };
 
         context.Absences.Add(absence);
@@ -69,7 +73,9 @@ public class AbsenceService(AppDbContext context, IFileService fileService) : IA
                         Id = d.Id,
                         FileName = d.FileName
                     })
-                    .ToList()
+                    .ToList(),
+                CreatedAt = a.CreatedAt,
+                UpdatedAt = a.UpdatedAt,
             })
             .FirstOrDefaultAsync();
 
@@ -142,6 +148,8 @@ public class AbsenceService(AppDbContext context, IFileService fileService) : IA
                 }
             }
         }
+
+        absence.UpdatedAt = DateTime.UtcNow;
 
         await context.SaveChangesAsync();
     }

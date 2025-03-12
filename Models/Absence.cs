@@ -18,4 +18,8 @@ public class Absence
     [Required]
     public bool DeclarationToDean { get; set; }
     public List<Guid> Documents { get; set; } = [];
+    [Required]
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    [Required]
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

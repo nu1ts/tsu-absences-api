@@ -16,4 +16,8 @@ public class AbsenceDto
     [Required]
     public bool DeclarationToDean { get; set; }
     public List<DocumentDto> Documents { get; set; } = [];
+    [Required]
+    public DateTime CreatedAt { get; set; }
+    [Required]
+    public DateTime UpdatedAt { get; set; }
 }
