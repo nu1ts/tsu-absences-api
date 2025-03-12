@@ -7,4 +7,5 @@ public interface IAbsenceService
 {
     Task<Absence> CreateAbsenceAsync(Guid userId, CreateAbsenceDto dto);
     Task UpdateAbsenceAsync(Guid userId, UpdateAbsenceDto dto, Guid id, bool isDeanOffice);
+    Task<AbsenceDto> GetAbsenceAsync(Guid userId, Guid id, bool isDeanOffice);
 }

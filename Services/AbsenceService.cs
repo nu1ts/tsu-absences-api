@@ -49,6 +49,42 @@ public class AbsenceService(AppDbContext context, IFileService fileService) : IA
 
         return absence;
     }
+    
+    public async Task<AbsenceDto> GetAbsenceAsync(Guid userId, Guid id, bool isDeanOffice)
+    {
+        var absence = await context.Absences
+            .Where(a => a.Id == id)
+            .Select(a => new AbsenceDto
+            {
+                UserId = a.UserId,
+                Type = a.Type,
+                StartDate = a.StartDate,
+                EndDate = a.EndDate,
+                Status = a.Status,
+                DeclarationToDean = a.DeclarationToDean,
+                Documents = context.Documents
+                    .Where(d => d.AbsenceId == a.Id)
+                    .Select(d => new DocumentDto
+                    {
+                        Id = d.Id,
+                        FileName = d.FileName
+                    })
+                    .ToList()
+            })
+            .FirstOrDefaultAsync();
+
+        if (absence == null)
+        {
+            throw new KeyNotFoundException("Absence not found.");
+        }
+
+        if (absence.UserId != userId && !isDeanOffice)
+        {
+            throw new ForbiddenAccessException("You do not have permission to view this absence.");
+        }
+
+        return absence;
+    }
 
     public async Task UpdateAbsenceAsync(Guid userId, UpdateAbsenceDto dto, Guid id, bool isDeanOffice)
     {

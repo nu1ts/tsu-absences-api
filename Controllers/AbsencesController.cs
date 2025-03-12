@@ -45,6 +45,41 @@ public class AbsencesController(IAbsenceService absenceService, /*IUserService u
         }
     }
     
+    [HttpGet("{id:guid}")]
+    [Produces("application/json")]
+    [ProducesResponseType(typeof(AbsenceDto), 200)]
+    [ProducesResponseType(typeof(void), 401)]
+    [ProducesResponseType(typeof(void), 403)]
+    [ProducesResponseType(typeof(void), 404)]
+    [ProducesResponseType(typeof(ErrorResponse), 500)]
+    public async Task<IActionResult> GetAbsence(Guid id)
+    {
+        try
+        {
+            // var userId = userService.GetUserId(User);  // Получение ID пользователя из токена
+            // var isDeanOffice = userService.HasRole(User, "DeanOffice");  // Проверка роли
+
+            var absenceDto = await absenceService.GetAbsenceAsync(UserId, id, IsDeanOffice);
+            return Ok(absenceDto);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Unauthorized(new ErrorResponse { Status = "401", Message = "You aren't authorized." });
+        }
+        catch (ForbiddenAccessException)
+        {
+            return StatusCode(403, new ErrorResponse { Status = "403", Message = "You don't have permission to view this absence." });
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound(new ErrorResponse { Status = "404", Message = "Absence not found." });
+        }
+        catch (Exception)
+        {
+            return StatusCode(500, new ErrorResponse { Status = "500", Message = "Internal Server Error" });
+        }
+    }
+    
     [HttpPut("{id:guid}")]
     [Produces("application/json")]
     [ProducesResponseType(200)]
