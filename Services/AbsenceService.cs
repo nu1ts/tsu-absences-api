@@ -20,14 +20,14 @@ public class AbsenceService(AppDbContext context, IFileService fileService) : IA
         {
             Id = Guid.NewGuid(),
             UserId = userId,
+            CreatedAt = now,
+            UpdatedAt = now,
             Type = dto.Type,
             StartDate = dto.StartDate,
             EndDate = dto.EndDate,
             Status = AbsenceStatus.Pending,
             DeclarationToDean = dto.DeclarationToDean,
-            Documents = [],
-            CreatedAt = now,
-            UpdatedAt = now
+            Documents = []
         };
 
         context.Absences.Add(absence);
@@ -54,13 +54,15 @@ public class AbsenceService(AppDbContext context, IFileService fileService) : IA
         return absence;
     }
     
-    public async Task<AbsenceDto> GetAbsenceAsync(Guid userId, Guid id, bool isDeanOffice)
+    public async Task<AbsenceDetailsDto> GetAbsenceAsync(Guid userId, Guid id, bool isDeanOffice)
     {
         var absence = await context.Absences
             .Where(a => a.Id == id)
-            .Select(a => new AbsenceDto
+            .Select(a => new AbsenceDetailsDto
             {
                 UserId = a.UserId,
+                CreatedAt = a.CreatedAt,
+                UpdatedAt = a.UpdatedAt,
                 Type = a.Type,
                 StartDate = a.StartDate,
                 EndDate = a.EndDate,
@@ -73,9 +75,7 @@ public class AbsenceService(AppDbContext context, IFileService fileService) : IA
                         Id = d.Id,
                         FileName = d.FileName
                     })
-                    .ToList(),
-                CreatedAt = a.CreatedAt,
-                UpdatedAt = a.UpdatedAt,
+                    .ToList()
             })
             .FirstOrDefaultAsync();
 
@@ -153,7 +153,72 @@ public class AbsenceService(AppDbContext context, IFileService fileService) : IA
 
         await context.SaveChangesAsync();
     }
+    
+    public async Task<AbsenceListResponse> GetAbsencesAsync(AbsenceFilterDto filterDto, int page, int size, IQueryable<Absence>? query = null)
+    {
+        query ??= context.Absences.AsQueryable();
 
+        // TODO: Cделать подгрузку из таблицы юзеров
+        /*if (!string.IsNullOrEmpty(filterDto.Group))
+            query = query.Include(a => a.User).Where(a => a.User.Group.Contains(filterDto.Group));
+
+        if (!string.IsNullOrEmpty(filterDto.StudentName))
+            query = query.Include(a => a.User).Where(a => a.User.Name.Contains(filterDto.StudentName));*/
+
+        if (filterDto.Status != null)
+            query = query.Where(a => a.Status == filterDto.Status);
+
+        if (filterDto.Type != null)
+            query = query.Where(a => a.Type == filterDto.Type);
+
+        query = filterDto.Sorting switch
+        {
+            AbsenceSorting.CreateDesc => query.OrderByDescending(a => a.CreatedAt),
+            AbsenceSorting.CreateAsc => query.OrderBy(a => a.CreatedAt),
+            AbsenceSorting.UpdateDesc => query.OrderByDescending(a => a.UpdatedAt),
+            AbsenceSorting.UpdateAsc => query.OrderBy(a => a.UpdatedAt),
+            _ => query.OrderByDescending(a => a.CreatedAt)
+        };
+        
+        var totalAbsences = await query.CountAsync();
+        var absences = await query.Skip((page - 1) * size)
+                                  .Take(size)
+                                  .Select(a => new AbsenceDto
+                                  {
+                                      Id = a.Id,
+                                      UserId = a.UserId,
+                                      StudentName = "Иванов Иван Иванович",
+                                      //StudentName = a.Student.Name, // TODO: Cделать подгрузку из таблицы юзеров
+                                      //Group = a.Student.Group,
+                                      CreatedAt = a.CreatedAt,
+                                      UpdatedAt = a.UpdatedAt,
+                                      Type = a.Type,
+                                      Status = a.Status
+                                  })
+                                  .ToListAsync();
+
+        return new AbsenceListResponse
+        {
+            Size = size,
+            Count = totalAbsences,
+            Current = page,
+            Absences = absences
+        };
+    }
+    public async Task<AbsenceListResponse> GetAbsencesForStudentAsync(Guid studentId, AbsenceFilterDto filterDto, int page, int size)
+    {
+        var query = context.Absences.Where(a => a.UserId == studentId);
+        
+        return await GetAbsencesAsync(filterDto, page, size, query);
+    }
+    public async Task<AbsenceListResponse> GetAbsencesForTeacherAsync(Guid teacherId, AbsenceFilterDto filterDto, int page, int size)
+    {
+        var query = context.Absences.Where(a => a.Status == AbsenceStatus.Approved);
+        
+        return await GetAbsencesAsync(filterDto, page, size, query);
+    }
+    
+    
     private static void ValidateAbsenceDto(AbsenceType type, DateTime? startDate, DateTime? endDate, List<IFormFile>? documents, bool? declarationToDean)
     {
         switch (type)
