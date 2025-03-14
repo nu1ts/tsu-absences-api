@@ -7,13 +7,9 @@ public class CreateAbsenceDto
 {
     [Required]
     public AbsenceType Type { get; set; }
-    
     public DateTime? StartDate { get; set; }
-    
     public DateTime? EndDate { get; set; }
-    
     [Required]
     public bool DeclarationToDean { get; set; } = false;
-    
     public List<IFormFile>? Documents { get; set; }
 }
