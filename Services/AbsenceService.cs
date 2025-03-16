@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using OfficeOpenXml;
 using tsu_absences_api.Data;
 using tsu_absences_api.DTOs;
 using tsu_absences_api.Enums;
@@ -154,31 +155,12 @@ public class AbsenceService(AppDbContext context, IFileService fileService) : IA
         await context.SaveChangesAsync();
     }
     
-    public async Task<AbsenceListResponse> GetAbsencesAsync(AbsenceFilterDto filterDto, int page, int size, IQueryable<Absence>? query = null)
+    public async Task<AbsenceListResponse> GetAbsencesAsync(AbsenceFilterDto filterDto, AbsenceSorting sorting, int page, int size, IQueryable<Absence>? query = null)
     {
         query ??= context.Absences.AsQueryable();
-
-        // TODO: Cделать подгрузку из таблицы юзеров
-        /*if (!string.IsNullOrEmpty(filterDto.Group))
-            query = query.Include(a => a.User).Where(a => a.User.Group.Contains(filterDto.Group));
-
-        if (!string.IsNullOrEmpty(filterDto.StudentName))
-            query = query.Include(a => a.User).Where(a => a.User.Name.Contains(filterDto.StudentName));*/
-
-        if (filterDto.Status != null)
-            query = query.Where(a => a.Status == filterDto.Status);
-
-        if (filterDto.Type != null)
-            query = query.Where(a => a.Type == filterDto.Type);
-
-        query = filterDto.Sorting switch
-        {
-            AbsenceSorting.CreateDesc => query.OrderByDescending(a => a.CreatedAt),
-            AbsenceSorting.CreateAsc => query.OrderBy(a => a.CreatedAt),
-            AbsenceSorting.UpdateDesc => query.OrderByDescending(a => a.UpdatedAt),
-            AbsenceSorting.UpdateAsc => query.OrderBy(a => a.UpdatedAt),
-            _ => query.OrderByDescending(a => a.CreatedAt)
-        };
+        
+        query = ApplyFilters(query, filterDto);
+        query = ApplySorting(query, sorting);
         
         var totalAbsences = await query.CountAsync();
         var absences = await query.Skip((page - 1) * size)
@@ -205,20 +187,131 @@ public class AbsenceService(AppDbContext context, IFileService fileService) : IA
             Absences = absences
         };
     }
-    public async Task<AbsenceListResponse> GetAbsencesForStudentAsync(Guid studentId, AbsenceFilterDto filterDto, int page, int size)
+    public async Task<AbsenceListResponse> GetAbsencesForStudentAsync(Guid studentId, AbsenceFilterDto filterDto, AbsenceSorting sorting, int page, int size)
     {
         var query = context.Absences.Where(a => a.UserId == studentId);
-        
-        return await GetAbsencesAsync(filterDto, page, size, query);
+        return await GetAbsencesAsync(filterDto, sorting, page, size, query);
     }
-    public async Task<AbsenceListResponse> GetAbsencesForTeacherAsync(Guid teacherId, AbsenceFilterDto filterDto, int page, int size)
+    public async Task<AbsenceListResponse> GetAbsencesForTeacherAsync(AbsenceFilterDto filterDto, AbsenceSorting sorting, int page, int size)
     {
         var query = context.Absences.Where(a => a.Status == AbsenceStatus.Approved);
-        
-        return await GetAbsencesAsync(filterDto, page, size, query);
+        return await GetAbsencesAsync(filterDto, sorting, page, size, query);
     }
     
+    public async Task<byte[]> ExportAbsencesToExcelAsync(AbsenceFilterDto filterDto, DateTime? startDate, DateTime? endDate, 
+        List<Guid>? studentIds, IQueryable<Absence>? query = null, bool isDeanOffice = true)
+    {
+        query ??= context.Absences.AsQueryable();
+        
+        query = ApplyFilters(query, filterDto, startDate, endDate, studentIds);
+
+        var absences = await query.Select(a => new AbsenceExportDto
+        { 
+            StudentName = "Иванов Иван Иванович", // TODO: Подгрузить из таблицы пользователей
+            //Group = a.Student.Group,
+            CreatedAt = a.CreatedAt,
+            UpdatedAt = a.UpdatedAt,
+            Type = a.Type,
+            StartDate = a.StartDate,
+            EndDate = a.EndDate,
+            Status = a.Status,
+            DeclarationToDean = a.DeclarationToDean
+        }).ToListAsync();
+        
+        return GenerateExcelFile(absences, isDeanOffice);
+    }
+    public async Task<byte[]> ExportAbsencesToExcelForTeacherAsync(AbsenceFilterDto filterDto, DateTime? startDate, DateTime? endDate, 
+        List<Guid>? studentIds)
+    {
+        var query = context.Absences.Where(a => a.Status == AbsenceStatus.Approved);
+        return await ExportAbsencesToExcelAsync(filterDto, startDate, endDate, studentIds, query, false);
+    }
+    private static byte[] GenerateExcelFile(List<AbsenceExportDto> absences, bool isDeanOffice)
+    {
+        ExcelPackage.License.SetNonCommercialOrganization("Team 18");
+
+        using var package = new ExcelPackage();
+        var worksheet = package.Workbook.Worksheets.Add("Absences");
+
+        worksheet.Cells[1, 1].Value = "Номер №";
+        worksheet.Cells[1, 2].Value = "Студент";
+        worksheet.Cells[1, 3].Value = "Группа";
+        worksheet.Cells[1, 4].Value = "Тип";
+        worksheet.Cells[1, 5].Value = "Дата начала";
+        worksheet.Cells[1, 6].Value = "Дата окончания";
+        worksheet.Cells[1, 7].Value = "Статус";
+        if (isDeanOffice)
+        {
+            worksheet.Cells[1, 8].Value = "Заявление в деканат";
+            worksheet.Cells[1, 9].Value = "Дата создания";
+            worksheet.Cells[1, 10].Value = "Дата изменения";
+        }
+        
+        for (var i = 0; i < absences.Count; i++)
+        {
+            var a = absences[i];
+            worksheet.Cells[i + 2, 1].Value = i + 1;
+            worksheet.Cells[i + 2, 2].Value = a.StudentName;
+            worksheet.Cells[i + 2, 3].Value = a.Group;
+            worksheet.Cells[i + 2, 4].Value = a.Type.ToString();
+            worksheet.Cells[i + 2, 5].Value = a.StartDate?.ToShortDateString();
+            worksheet.Cells[i + 2, 6].Value = a.EndDate?.ToShortDateString();
+            worksheet.Cells[i + 2, 7].Value = a.Status.ToString();
+
+            if (!isDeanOffice)
+                continue;
+            
+            worksheet.Cells[i + 2, 8].Value = a.DeclarationToDean?.ToString();
+            worksheet.Cells[i + 2, 9].Value = a.CreatedAt.ToShortDateString();
+            worksheet.Cells[i + 2, 10].Value = a.UpdatedAt?.ToShortDateString();
+        }
+
+        worksheet.Cells.AutoFitColumns();
+
+        return package.GetAsByteArray();
+    }
     
+    private static IQueryable<Absence> ApplyFilters(IQueryable<Absence> query, AbsenceFilterDto filterDto,
+        DateTime? startDate = null, DateTime? endDate = null, List<Guid>? studentIds = null)
+    {
+        if (startDate.HasValue || endDate.HasValue)
+        {
+            query = query.Where(a => 
+                (!startDate.HasValue || a.StartDate >= startDate) &&
+                (!endDate.HasValue || a.EndDate <= endDate));
+        }
+
+        if (studentIds?.Count > 0)
+        {
+            query = query.Where(a => studentIds.Contains(a.UserId));
+        }
+    
+        if (filterDto.Status != null)
+            query = query.Where(a => a.Status == filterDto.Status);
+
+        if (filterDto.Type != null)
+            query = query.Where(a => a.Type == filterDto.Type);
+
+        // TODO: Подгрузка из таблицы юзеров
+        /*if (!string.IsNullOrEmpty(filterDto.Group))
+            query = query.Include(a => a.User).Where(a => a.User.Group.Contains(filterDto.Group));
+
+        if (!string.IsNullOrEmpty(filterDto.StudentName))
+            query = query.Include(a => a.User).Where(a => a.User.Name.Contains(filterDto.StudentName));*/
+
+        return query;
+    }
+    private static IQueryable<Absence> ApplySorting(IQueryable<Absence> query, AbsenceSorting sorting)
+    {
+        return sorting switch
+        {
+            AbsenceSorting.CreateDesc => query.OrderByDescending(a => a.CreatedAt),
+            AbsenceSorting.CreateAsc => query.OrderBy(a => a.CreatedAt),
+            AbsenceSorting.UpdateDesc => query.OrderByDescending(a => a.UpdatedAt),
+            AbsenceSorting.UpdateAsc => query.OrderBy(a => a.UpdatedAt),
+            _ => query.OrderByDescending(a => a.CreatedAt)
+        };
+    }
     private static void ValidateAbsenceDto(AbsenceType type, DateTime? startDate, DateTime? endDate, List<IFormFile>? documents, bool? declarationToDean)
     {
         switch (type)

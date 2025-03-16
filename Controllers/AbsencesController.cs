@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using tsu_absences_api.DTOs;
+using tsu_absences_api.Enums;
 using tsu_absences_api.Exceptions;
 using tsu_absences_api.Interfaces;
 
@@ -8,11 +9,14 @@ namespace tsu_absences_api.Controllers;
 //[Authorize(Roles = "Student")]
 [ApiController]
 [Route("api/absences")]
-public class AbsencesController(IAbsenceService absenceService, /*IUserService userService,*/ IFileService fileService) : ControllerBase
+public class AbsencesController(IAbsenceService absenceService, /*IUserService userService,*/ IFileService fileService)
+    : ControllerBase
 {
-    private Guid UserId { get; set; } = Guid.Parse("033d63fa-d8a8-4675-a583-1acd9cf811e1"); // тестовый Guid пользователя
+    private Guid UserId { get; set; } =
+        Guid.Parse("033d63fa-d8a8-4675-a583-1acd9cf811e1"); // тестовый Guid пользователя
+
     private bool IsDeanOffice { get; set; } = true; // тестовый bool
-    
+
     [HttpPost]
     [Produces("application/json")]
     [ProducesResponseType(typeof(Guid), 200)]
@@ -23,7 +27,7 @@ public class AbsencesController(IAbsenceService absenceService, /*IUserService u
     {
         if (!ModelState.IsValid)
             return BadRequest(new ErrorResponse { Status = "400", Message = "Invalid data provided." });
-        
+
         try
         {
             //var userId = userService.GetUserId(User); // TODO: Нужна функция по получению ID пользователя из токена
@@ -43,7 +47,7 @@ public class AbsencesController(IAbsenceService absenceService, /*IUserService u
             return StatusCode(500, new ErrorResponse { Status = "500", Message = "Internal Server Error" });
         }
     }
-    
+
     [HttpGet("{id:guid}")]
     [Produces("application/json")]
     [ProducesResponseType(typeof(AbsenceDetailsDto), 200)]
@@ -67,7 +71,8 @@ public class AbsencesController(IAbsenceService absenceService, /*IUserService u
         }
         catch (ForbiddenAccessException)
         {
-            return StatusCode(403, new ErrorResponse { Status = "403", Message = "You don't have permission to view this absence." });
+            return StatusCode(403,
+                new ErrorResponse { Status = "403", Message = "You don't have permission to view this absence." });
         }
         catch (KeyNotFoundException)
         {
@@ -78,7 +83,7 @@ public class AbsencesController(IAbsenceService absenceService, /*IUserService u
             return StatusCode(500, new ErrorResponse { Status = "500", Message = "Internal Server Error" });
         }
     }
-    
+
     [HttpPut("{id:guid}")]
     [Produces("application/json")]
     [ProducesResponseType(200)]
@@ -91,7 +96,7 @@ public class AbsencesController(IAbsenceService absenceService, /*IUserService u
     {
         if (!ModelState.IsValid)
             return BadRequest(new ErrorResponse { Status = "400", Message = "Invalid data provided." });
-        
+
         try
         {
             // var userId = userService.GetUserId(User);  // TODO: Нужна функция по получению ID пользователя из токена
@@ -110,7 +115,8 @@ public class AbsencesController(IAbsenceService absenceService, /*IUserService u
         }
         catch (ForbiddenAccessException)
         {
-            return StatusCode(403, new ErrorResponse { Status = "403", Message = "You don't have permission to edit this absence." });
+            return StatusCode(403,
+                new ErrorResponse { Status = "403", Message = "You don't have permission to edit this absence." });
         }
         catch (KeyNotFoundException)
         {
@@ -121,7 +127,7 @@ public class AbsencesController(IAbsenceService absenceService, /*IUserService u
             return StatusCode(500, new ErrorResponse { Status = "500", Message = "Internal Server Error" });
         }
     }
-    
+
     [HttpGet]
     [Produces("application/json")]
     [ProducesResponseType(typeof(AbsenceListResponse), 200)]
@@ -131,6 +137,7 @@ public class AbsencesController(IAbsenceService absenceService, /*IUserService u
     [ProducesResponseType(typeof(ErrorResponse), 500)]
     public async Task<IActionResult> GetAbsences(
         [FromQuery] AbsenceFilterDto filterDto,
+        [FromQuery] AbsenceSorting sorting,
         [FromQuery] int page = 1,
         [FromQuery] int size = 10)
     {
@@ -141,30 +148,85 @@ public class AbsencesController(IAbsenceService absenceService, /*IUserService u
         {
             // var userId = userService.GetUserId(User);  // TODO: Нужна функция по получению ID пользователя из токена
             // var isDeanOffice = userService.HasRole(User, "DeanOffice");  // TODO: Нужна проверка роли
-            
+
             if (IsDeanOffice)
             {
-                var absences = await absenceService.GetAbsencesAsync(filterDto, page, size);
+                var absences = await absenceService.GetAbsencesAsync(filterDto, sorting, page, size);
                 return Ok(absences);
             }
-            
+
             if (User.IsInRole("Student"))
             {
-                var absences = await absenceService.GetAbsencesForStudentAsync(UserId, filterDto, page, size);
+                var absences = await absenceService
+                    .GetAbsencesForStudentAsync(UserId, filterDto, sorting, page, size);
                 return Ok(absences);
             }
-            
+
             if (User.IsInRole("Teacher"))
             {
-                var absences = await absenceService.GetAbsencesForTeacherAsync(UserId, filterDto, page, size);
+                var absences = await absenceService.GetAbsencesForTeacherAsync(filterDto, sorting, page, size);
                 return Ok(absences);
             }
 
             return Unauthorized(new ErrorResponse { Status = "401", Message = "You aren't authorized." });
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            return StatusCode(500, new ErrorResponse { Status = "500", Message = ex.Message });
+            return StatusCode(500, new ErrorResponse { Status = "500", Message = "Internal Server Error" });
+        }
+    }
+    
+    [HttpGet("export")]
+    [Produces("application/json")]
+    [ProducesResponseType(typeof(void), 200)]
+    [ProducesResponseType(typeof(void), 400)]
+    [ProducesResponseType(typeof(void), 401)]
+    [ProducesResponseType(typeof(void), 403)]
+    [ProducesResponseType(typeof(ErrorResponse), 500)]
+    public async Task<IActionResult> ExportAbsences(
+        [FromQuery] AbsenceFilterDto filterDto,
+        [FromQuery] DateTime? startDate,
+        [FromQuery] DateTime? endDate,
+        [FromQuery] List<Guid>? studentIds)
+    {
+        if (!ModelState.IsValid)
+            return BadRequest(new ErrorResponse { Status = "400", Message = "Invalid data provided." });
+
+        // var userId = userService.GetUserId(User);  // TODO: Нужна функция по получению ID пользователя из токена
+        // var isDeanOffice = userService.HasRole(User, "DeanOffice");  // TODO: Нужна проверка роли
+
+        try
+        {
+            if (IsDeanOffice)
+            {
+                var fileBytes = await absenceService
+                    .ExportAbsencesToExcelAsync(filterDto, startDate, endDate, studentIds);
+                var fileName = $"Absences_{DateTime.UtcNow:yyyy-MM-dd}.xlsx";
+                return File(fileBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+            } 
+            
+            if (User.IsInRole("Teacher"))
+            {
+                var fileBytes = await absenceService
+                    .ExportAbsencesToExcelForTeacherAsync(filterDto, startDate, endDate, studentIds);
+                var fileName = $"Absences_{DateTime.UtcNow:yyyy-MM-dd}.xlsx";
+                return File(fileBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+            }
+            
+            return StatusCode(403,
+                new ErrorResponse { Status = "403", Message = "You don't have permission to export absences." });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new ErrorResponse { Status = "400", Message = ex.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Unauthorized(new ErrorResponse { Status = "401", Message = "You aren't authorized." });
+        }
+        catch (Exception)
+        {
+            return StatusCode(500, new ErrorResponse { Status = "500", Message = "Internal Server Error" });
         }
     }
 }
