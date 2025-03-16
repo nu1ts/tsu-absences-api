@@ -18,4 +18,6 @@ public interface IAbsenceService
         List<Guid>? studentIds, IQueryable<Absence>? query = null, bool isDeanOffice = true);
     Task<byte[]> ExportAbsencesToExcelForTeacherAsync(AbsenceFilterDto filterDto, DateTime? startDate, DateTime? endDate,
         List<Guid>? studentIds);
+    Task ApproveAbsenceAsync(Guid id);
+    Task RejectAbsenceAsync(Guid id, string? reason);
 }

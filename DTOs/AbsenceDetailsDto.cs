@@ -19,5 +19,7 @@ public class AbsenceDetailsDto
     public AbsenceStatus Status { get; set; }
     [Required]
     public bool DeclarationToDean { get; set; }
+    [StringLength(500)]
+    public string? RejectionReason { get; set; }
     public List<DocumentDto> Documents { get; set; } = [];
 }

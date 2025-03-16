@@ -69,6 +69,7 @@ public class AbsenceService(AppDbContext context, IFileService fileService) : IA
                 EndDate = a.EndDate,
                 Status = a.Status,
                 DeclarationToDean = a.DeclarationToDean,
+                RejectionReason = a.RejectionReason,
                 Documents = context.Documents
                     .Where(d => d.AbsenceId == a.Id)
                     .Select(d => new DocumentDto
@@ -269,6 +270,43 @@ public class AbsenceService(AppDbContext context, IFileService fileService) : IA
         worksheet.Cells.AutoFitColumns();
 
         return package.GetAsByteArray();
+    }
+    
+    public async Task ApproveAbsenceAsync(Guid id)
+    {
+        var absence = await context.Absences.FindAsync(id);
+    
+        if (absence == null)
+            throw new KeyNotFoundException("Absence not found.");
+
+        if (absence.Status == AbsenceStatus.Approved)
+            throw new InvalidOperationException("Absence is already approved.");
+
+        if (absence.Status != AbsenceStatus.Pending)
+            throw new InvalidOperationException("Absence is in an invalid state for approval.");
+
+        absence.Status = AbsenceStatus.Approved;
+    
+        await context.SaveChangesAsync();
+    }
+    
+    public async Task RejectAbsenceAsync(Guid id, string? reason)
+    {
+        var absence = await context.Absences.FindAsync(id);
+    
+        if (absence == null)
+            throw new KeyNotFoundException("Absence not found.");
+
+        if (absence.Status == AbsenceStatus.Rejected)
+            throw new InvalidOperationException("Absence is already rejected.");
+
+        if (absence.Status != AbsenceStatus.Pending)
+            throw new InvalidOperationException("Absence cannot be rejected in its current status.");
+
+        absence.Status = AbsenceStatus.Rejected;
+        absence.RejectionReason = reason;
+
+        await context.SaveChangesAsync();
     }
     
     private static IQueryable<Absence> ApplyFilters(IQueryable<Absence> query, AbsenceFilterDto filterDto,

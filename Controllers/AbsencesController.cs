@@ -113,10 +113,10 @@ public class AbsencesController(IAbsenceService absenceService, /*IUserService u
         {
             return Unauthorized(new ErrorResponse { Status = "401", Message = "You aren't authorized." });
         }
-        catch (ForbiddenAccessException)
+        catch (ForbiddenAccessException ex)
         {
             return StatusCode(403,
-                new ErrorResponse { Status = "403", Message = "You don't have permission to edit this absence." });
+                new ErrorResponse { Status = "403", Message = ex.Message });
         }
         catch (KeyNotFoundException)
         {
@@ -217,6 +217,89 @@ public class AbsencesController(IAbsenceService absenceService, /*IUserService u
                 new ErrorResponse { Status = "403", Message = "You don't have permission to export absences." });
         }
         catch (ArgumentException ex)
+        {
+            return BadRequest(new ErrorResponse { Status = "400", Message = ex.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Unauthorized(new ErrorResponse { Status = "401", Message = "You aren't authorized." });
+        }
+        catch (Exception)
+        {
+            return StatusCode(500, new ErrorResponse { Status = "500", Message = "Internal Server Error" });
+        }
+    }
+    
+    [HttpPatch("{id:guid}/approve")]
+    [Produces("application/json")]
+    [ProducesResponseType(200)]
+    [ProducesResponseType(typeof(void), 400)]
+    [ProducesResponseType(typeof(void), 401)]
+    [ProducesResponseType(typeof(void), 403)]
+    [ProducesResponseType(typeof(void), 404)]
+    [ProducesResponseType(typeof(ErrorResponse), 500)]
+    public async Task<IActionResult> ApproveAbsence(Guid id)
+    {
+        // var isDeanOffice = userService.HasRole(User, "DeanOffice");  // TODO: Нужна проверка роли
+        
+        try
+        {
+            if (!IsDeanOffice)
+                return StatusCode(403, 
+                    new ErrorResponse { Status = "403", Message = "You don't have permission to approve absences." });
+            
+            await absenceService.ApproveAbsenceAsync(id);
+
+            return Ok();
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound(new ErrorResponse { Status = "404", Message = "Absence not found." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new ErrorResponse { Status = "400", Message = ex.Message });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Unauthorized(new ErrorResponse { Status = "401", Message = "You aren't authorized." });
+        }
+        catch (Exception)
+        {
+            return StatusCode(500, new ErrorResponse { Status = "500", Message = "Internal Server Error" });
+        }
+    }
+    
+    [HttpPatch("{id:guid}/reject")]
+    [Produces("application/json")]
+    [ProducesResponseType(200)]
+    [ProducesResponseType(typeof(void), 400)]
+    [ProducesResponseType(typeof(void), 401)]
+    [ProducesResponseType(typeof(void), 403)]
+    [ProducesResponseType(typeof(void), 404)]
+    [ProducesResponseType(typeof(ErrorResponse), 500)]
+    public async Task<IActionResult> RejectAbsence(Guid id, [FromBody] RejectAbsenceDto dto)
+    {
+        if (!ModelState.IsValid)
+            return BadRequest(new ErrorResponse { Status = "400", Message = "Invalid data provided." });
+        
+        // var isDeanOffice = userService.HasRole(User, "DeanOffice");  // TODO: Нужна проверка роли
+        
+        try
+        {
+            if (!IsDeanOffice)
+                return StatusCode(403, 
+                    new ErrorResponse { Status = "403", Message = "You don't have permission to reject absences." });
+
+            await absenceService.RejectAbsenceAsync(id, dto?.Reason);
+
+            return Ok();
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound(new ErrorResponse { Status = "404", Message = "Absence not found." });
+        }
+        catch (InvalidOperationException ex)
         {
             return BadRequest(new ErrorResponse { Status = "400", Message = ex.Message });
         }
