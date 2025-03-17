@@ -21,5 +21,7 @@ public class Absence
     public AbsenceStatus Status { get; set; } = AbsenceStatus.Pending;
     [Required]
     public bool DeclarationToDean { get; set; }
+    [StringLength(500)]
+    public string? RejectionReason { get; set; }
     public List<Guid> Documents { get; set; } = [];
 }
