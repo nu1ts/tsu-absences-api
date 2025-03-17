@@ -1,73 +1,78 @@
-using Microsoft.OpenApi.Models;
-using tsu_absences_api.Data;
-using tsu_absences_api.Services;
-using Microsoft.EntityFrameworkCore;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using System.Text;
-using Microsoft.Extensions.Options;
+using Microsoft.OpenApi.Models;
+using tsu_absences_api;
+using tsu_absences_api.Data;
+using tsu_absences_api.Middleware;
+using tsu_absences_api.Options;
+using tsu_absences_api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var jwtSettings = builder.Configuration.GetSection("JwtSettings");
-#pragma warning disable CS8604
-var key = Encoding.UTF8.GetBytes(jwtSettings["Secret"]);
-#pragma warning restore CS8604
+builder.Services.AddMvc().AddJsonOptions(opts =>
+{
+    var enumConverter = new JsonStringEnumConverter();
+    opts.JsonSerializerOptions.Converters.Add(enumConverter);
+});
+
+builder.Configuration
+    .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+    .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true)
+    .AddEnvironmentVariables()
+    .AddUserSecrets<Program>();
 
 
-builder.Services.AddDbContext<AppDbContext>(options =>
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options => 
+{
+    options.AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"));
+    options.AddPolicy("TeacherOnly", policy => policy.RequireRole("Teacher"));
+    options.AddPolicy("StudentOnly", policy => policy.RequireRole("Student"));
+});
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
-        options.SaveToken = true;
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
+            ValidIssuer = AuthOptions.Issuer,
             ValidateAudience = true,
+            ValidAudience = AuthOptions.Audience,
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
-            ValidIssuer = jwtSettings["Issuer"],
-            ValidAudience = jwtSettings["Audience"],
-            IssuerSigningKey = new SymmetricSecurityKey(key)
+            IssuerSigningKey = AuthOptions.GetSymmetricSecurityKey(),
         };
+
+        options.EventsType = typeof(JwtEvents);
     });
+
+builder.Services.AddScoped<BlacklistService>();
+builder.Services.AddScoped<JwtEvents>();
+builder.Services.AddScoped<UserService>();
+builder.Services.AddScoped<TokenService>();
 
 builder.Services.AddControllers();
 
-builder.Services.AddSingleton<JwtService>();
-
-builder.Services.AddHealthChecks();
-
-builder.Services.AddSwaggerGen(c =>
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(option =>
 {
-    c.SwaggerDoc("v1", new OpenApiInfo { Title = "TSU Absences API", Version = "v1" });
-
-    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    option.SwaggerDoc("v1", new OpenApiInfo { Title = "TSU Absences API", Version = "v1" });
+    option.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
-        Description = "JWT Authorization header using the Bearer scheme. Example: \"Authorization: Bearer {token}\"",
-        Name = "Authorization",
         In = ParameterLocation.Header,
-        Type = SecuritySchemeType.ApiKey,
+        Description = "Please enter a valid token",
+        Name = "Authorization",
+        Type = SecuritySchemeType.Http,
+        BearerFormat = "JWT",
         Scheme = "Bearer"
     });
 
-    c.AddSecurityRequirement(new OpenApiSecurityRequirement
-    {
-        {
-            new OpenApiSecurityScheme
-            {
-                Reference = new OpenApiReference
-                {
-                    Type = ReferenceType.SecurityScheme,
-                    Id = "Bearer"
-                }
-            },
-            Array.Empty<string>()
-        }
-    });
+    option.OperationFilter<AuthorizeCheckOperationFilter>();
 });
 
 var app = builder.Build();
@@ -75,11 +80,18 @@ var app = builder.Build();
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
-    app.UseSwaggerUI(c =>
-    {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "TSU Absences API v1");
-    });
+    app.UseSwaggerUI();
 }
+
+using (var scope = app.Services.CreateScope())
+{
+    scope.ServiceProvider.GetRequiredService<ApplicationDbContext>().Database.Migrate();
+}
+
+app.UseHttpsRedirection();
+
+app.UseMiddleware<ErrorHandlingMiddleware>();
+
 
 app.UseAuthentication();
 app.UseAuthorization();
