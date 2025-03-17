@@ -9,7 +9,7 @@ namespace tsu_absences_api.Controllers;
 //[Authorize(Roles = "Student")]
 [ApiController]
 [Route("api/absences")]
-public class AbsencesController(IAbsenceService absenceService, /*IUserService userService,*/ IFileService fileService)
+public class AbsencesController(IAbsenceService absenceService)
     : ControllerBase
 {
     private Guid UserId { get; set; } =
@@ -291,7 +291,7 @@ public class AbsencesController(IAbsenceService absenceService, /*IUserService u
                 return StatusCode(403, 
                     new ErrorResponse { Status = "403", Message = "You don't have permission to reject absences." });
 
-            await absenceService.RejectAbsenceAsync(id, dto?.Reason);
+            await absenceService.RejectAbsenceAsync(id, dto.Reason);
 
             return Ok();
         }
@@ -356,9 +356,9 @@ public class AbsencesController(IAbsenceService absenceService, /*IUserService u
         {
             return BadRequest(new ErrorResponse { Status = "400", Message = ex.Message });
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            return StatusCode(500, new ErrorResponse { Status = "500", Message = ex.Message });
+            return StatusCode(500, new ErrorResponse { Status = "500", Message = "Internal Server Error" });
         }
     }
 }

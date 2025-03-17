@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using tsu_absences_api.Data;
+using tsu_absences_api.Exceptions;
 using tsu_absences_api.Interfaces;
 
 namespace tsu_absences_api.Services;
@@ -44,7 +45,7 @@ public class FileService(AppDbContext context) : IFileService
         }
         catch (Exception ex)
         {
-            throw new InvalidOperationException("An error occurred while processing the file.", ex);
+            throw new ArgumentException("An error occurred while processing the file.", ex);
         }
     }
 
@@ -61,14 +62,14 @@ public class FileService(AppDbContext context) : IFileService
         var absence = await context.Absences
             .FirstOrDefaultAsync(a => a.Id == document.AbsenceId);
 
-        if (absence == null)
+        if (absence == null || absence.Id != document.AbsenceId)
         {
             throw new FileNotFoundException("Absence not found for the document.");
         }
 
         if (absence.UserId != userId && !isDeanOffice)
         {
-            throw new UnauthorizedAccessException("You don't have permission to access this file.");
+            throw new ForbiddenAccessException("You don't have permission to access this file.");
         }
 
         var filePath = Path.Combine(_storagePath, document.FilePath);
