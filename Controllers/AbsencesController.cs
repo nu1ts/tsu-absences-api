@@ -256,7 +256,7 @@ public class AbsencesController(IAbsenceService absenceService, /*IUserService u
         {
             return NotFound(new ErrorResponse { Status = "404", Message = "Absence not found." });
         }
-        catch (InvalidOperationException ex)
+        catch (ArgumentException ex)
         {
             return BadRequest(new ErrorResponse { Status = "400", Message = ex.Message });
         }
@@ -299,7 +299,7 @@ public class AbsencesController(IAbsenceService absenceService, /*IUserService u
         {
             return NotFound(new ErrorResponse { Status = "404", Message = "Absence not found." });
         }
-        catch (InvalidOperationException ex)
+        catch (ArgumentException ex)
         {
             return BadRequest(new ErrorResponse { Status = "400", Message = ex.Message });
         }
@@ -310,6 +310,55 @@ public class AbsencesController(IAbsenceService absenceService, /*IUserService u
         catch (Exception)
         {
             return StatusCode(500, new ErrorResponse { Status = "500", Message = "Internal Server Error" });
+        }
+    }
+    
+    [HttpPatch("{id:guid}/extend")]
+    [Produces("application/json")]
+    [ProducesResponseType(200)]
+    [ProducesResponseType(typeof(void), 400)]
+    [ProducesResponseType(typeof(void), 401)]
+    [ProducesResponseType(typeof(void), 403)]
+    [ProducesResponseType(typeof(void), 404)]
+    [ProducesResponseType(typeof(ErrorResponse), 500)]
+    public async Task<IActionResult> ExtendAbsence(Guid id, [FromForm] ExtendAbsenceDto dto)
+    {
+        if (!ModelState.IsValid)
+            return BadRequest(new ErrorResponse { Status = "400", Message = "Invalid data provided." });
+
+        try
+        {
+            // var userId = userService.GetUserId(User); // TODO: Получение ID пользователя из токена
+            // var isDeanOffice = userService.HasRole(User, "DeanOffice");  // TODO: Нужна проверка роли
+        
+            if (IsDeanOffice)
+                await absenceService.ExtendAbsenceAsync(UserId, id, dto);
+            
+            if(User.IsInRole("Student"))
+                await absenceService.ExtendAbsenceAsync(UserId, id, dto, false);
+
+            return Ok();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Unauthorized(new ErrorResponse { Status = "401", Message = "You aren't authorized." });
+        }
+        catch (ForbiddenAccessException ex)
+        {
+            return StatusCode(403, 
+                new ErrorResponse { Status = "403", Message = ex.Message });
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound(new ErrorResponse { Status = "404", Message = "Absence not found." });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new ErrorResponse { Status = "400", Message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new ErrorResponse { Status = "500", Message = ex.Message });
         }
     }
 }

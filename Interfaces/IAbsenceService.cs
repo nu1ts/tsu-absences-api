@@ -20,4 +20,5 @@ public interface IAbsenceService
         List<Guid>? studentIds);
     Task ApproveAbsenceAsync(Guid id);
     Task RejectAbsenceAsync(Guid id, string? reason);
+    Task ExtendAbsenceAsync(Guid userId, Guid absenceId, ExtendAbsenceDto dto, bool? isDeanOffice = true);
 }

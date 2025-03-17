@@ -280,10 +280,10 @@ public class AbsenceService(AppDbContext context, IFileService fileService) : IA
             throw new KeyNotFoundException("Absence not found.");
 
         if (absence.Status == AbsenceStatus.Approved)
-            throw new InvalidOperationException("Absence is already approved.");
+            throw new ArgumentException("Absence is already approved.");
 
         if (absence.Status != AbsenceStatus.Pending)
-            throw new InvalidOperationException("Absence is in an invalid state for approval.");
+            throw new ArgumentException("Absence is in an invalid state for approval.");
 
         absence.Status = AbsenceStatus.Approved;
     
@@ -298,13 +298,90 @@ public class AbsenceService(AppDbContext context, IFileService fileService) : IA
             throw new KeyNotFoundException("Absence not found.");
 
         if (absence.Status == AbsenceStatus.Rejected)
-            throw new InvalidOperationException("Absence is already rejected.");
+            throw new ArgumentException("Absence is already rejected.");
 
         if (absence.Status != AbsenceStatus.Pending)
-            throw new InvalidOperationException("Absence cannot be rejected in its current status.");
+            throw new ArgumentException("Absence cannot be rejected in its current status.");
 
         absence.Status = AbsenceStatus.Rejected;
         absence.RejectionReason = reason;
+
+        await context.SaveChangesAsync();
+    }
+    
+    public async Task ExtendAbsenceAsync(Guid userId, Guid id, ExtendAbsenceDto dto, bool? isDeanOffice = true)
+    {
+        var absence = await context.Absences.FirstOrDefaultAsync(a => a.Id == id);
+        
+        if (absence == null)
+            throw new KeyNotFoundException("Absence not found.");
+        
+        if (absence.UserId != userId && isDeanOffice != true)
+            throw new ForbiddenAccessException("You don't have permission to extend this absence.");
+
+        if (absence.Type == AbsenceType.Academic && isDeanOffice != true)
+            throw new ForbiddenAccessException("Only the dean's office can extend academic absences.");
+
+        if (absence.Type != AbsenceType.Sick && absence.Type != AbsenceType.Family && absence.Type != AbsenceType.Academic)
+            throw new ArgumentException("This type of absence can't be extended.");
+        
+        switch (absence.Type)
+        {
+            case AbsenceType.Sick:
+                if (dto.Documents == null || dto.Documents.Count == 0)
+                    throw new ArgumentException("At least one new document is required for extending a sick absence.");
+                break;
+
+            case AbsenceType.Family:
+                if (absence.DeclarationToDean == false && dto.DeclarationToDean == true)
+                    break;
+
+                if (dto.Documents?.Count > 0)
+                    break;
+
+                if (!dto.DeclarationToDean.HasValue || !dto.DeclarationToDean.Value)
+                    throw new ArgumentException("A declaration to the dean is required to extend a family absence.");
+                break;
+
+            case AbsenceType.Academic:
+                if (isDeanOffice != true)
+                    throw new ForbiddenAccessException("Only the dean's office can extend academic absences.");
+                break;
+
+            default:
+                throw new ArgumentException("Unsupported absence type.");
+        }
+        
+        if (dto.Documents?.Count > 0)
+        {
+            foreach (var file in dto.Documents)
+            {
+                var existingDocument = await context.Documents
+                    .FirstOrDefaultAsync(d => d.AbsenceId == absence.Id && d.FileName == file.FileName);
+                
+                if (existingDocument != null)
+                    throw new ArgumentException($"File with the name '{file.FileName}' already exists for this absence.");
+
+                var filePath = await fileService.SaveFileAsync(file);
+                var document = new Document
+                {
+                    Id = Guid.NewGuid(),
+                    AbsenceId = absence.Id,
+                    FileName = file.FileName,
+                    FilePath = filePath
+                };
+                context.Documents.Add(document);
+                absence.Documents.Add(document.Id);
+            }
+        }
+
+        absence.EndDate = dto.NewEndDate;
+        absence.UpdatedAt = DateTime.UtcNow;
+        
+        if (isDeanOffice == true && absence.Type == AbsenceType.Academic && dto.ApproveImmediately == true)
+            absence.Status = AbsenceStatus.Approved;
+        else
+            absence.Status = AbsenceStatus.Pending;
 
         await context.SaveChangesAsync();
     }
