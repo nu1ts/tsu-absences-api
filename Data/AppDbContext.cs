@@ -9,4 +9,7 @@ public class AppDbContext : DbContext
     
     public DbSet<Absence> Absences { get; set; }
     public DbSet<Document> Documents { get; set; }
+    public DbSet<BlacklistedToken> BlacklistedTokens { get; set; }
+    public DbSet<User> Users { get; set; }
+    //public DbSet<UserRole> UserRoles { get; set; }
 }
