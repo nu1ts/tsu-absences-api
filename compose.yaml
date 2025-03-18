@@ -1,6 +1,33 @@
 ﻿services:
   tsu-absences-api:
-    image: tsu-absences-api
+    image: nu1ts/tsu-absences-api:latest
     build:
       context: .
       dockerfile: Dockerfile
+    ports:
+      - "80:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - DB_CONNECTION_STRING=Host=${DB_HOST};Database=${DB_NAME};Username=${DB_USERNAME};Password=${DB_PASSWORD}
+    depends_on:
+      - db
+    networks:
+      - tsu-network
+  
+  db:
+    image: postgres:latest
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - tsu_network
+    
+networks:
+  tsu_network:
+    driver: bridge
+    
+volumes:
+  pgdata:
