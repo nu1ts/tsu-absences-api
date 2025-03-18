@@ -16,7 +16,7 @@ public class UsersController : ControllerBase
     }
 
     [HttpGet]
-    [Authorize]
+    [Authorize(Roles = "Admin, DeanOffice, Teacher")]
     public async Task<IActionResult> GetUsers(
         [FromQuery] string? name,
         [FromQuery] UserRole? role,
@@ -25,6 +25,14 @@ public class UsersController : ControllerBase
     {
         var users = await _userService.GetUsers(name, role, page, size, User);
         return Ok(users);
+    }
+
+    [HttpPatch("{id:guid}/role")]
+    [Authorize(Roles = "Admin, DeanOffice")]
+    public async Task<IActionResult> UpdateUserRole(Guid id, [FromBody] List<UserRole> roles)
+    {
+        await _userService.UpdateUserRoles(id, roles);
+        return Ok(new { Message = "User roles updated successfully" });
     }
 
     //...
