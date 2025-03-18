@@ -1,4 +1,6 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using tsu_absences_api.DTOs;
 using tsu_absences_api.Exceptions;
 using tsu_absences_api.Interfaces;
@@ -7,14 +9,9 @@ namespace tsu_absences_api.Controllers;
 
 [ApiController]
 [Route("api/documents")]
-//[Authorize(Roles = "Student")]
+[Authorize(Roles = "Student, DeanOffice")]
 public class DocumentsController(IFileService fileService) : ControllerBase
 {
-    private Guid UserId { get; set; } =
-        Guid.Parse("033d63fa-d8a8-4675-a583-1acd9cf811e1"); // тестовый Guid пользователя
-
-    private bool IsDeanOffice { get; set; } = true; // тестовый bool
-    
     [HttpGet("{documentId:guid}")]
     [ProducesResponseType(typeof(void), 200)]
     [ProducesResponseType(typeof(void), 400)]
@@ -29,10 +26,13 @@ public class DocumentsController(IFileService fileService) : ControllerBase
         
         try
         {
-            // var userId = userService.GetUserId(User); // TODO: Получение ID пользователя из токена
-            // var isDeanOffice = userService.HasRole(User, "DeanOffice");  // TODO: Нужна проверка роли
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!Guid.TryParse(userIdClaim, out var userId))
+                throw new UnauthorizedAccessException("Invalid user ID.");
             
-            var fileResult = await fileService.GetFileAsync(documentId, UserId, IsDeanOffice);
+            var isDeanOffice = User.IsInRole("DeanOffice");
+            
+            var fileResult = await fileService.GetFileAsync(documentId, userId, isDeanOffice);
             return fileResult;
         }
         catch (UnauthorizedAccessException ex)
