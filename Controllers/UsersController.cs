@@ -27,6 +27,23 @@ public class UsersController : ControllerBase
         return Ok(users);
     }
 
+    [HttpGet("{id:guid}")]
+    [Authorize(Roles = "Admin, DeanOffice")]
+    public async Task<IActionResult> GetUser(Guid id)
+    {
+        var user = await _userService.GetUserById(id);
+        return Ok(user);
+    }
+
+    [HttpDelete("{id:guid}")]
+    [Authorize(Roles = "Admin, DeanOffice")]
+    public async Task<IActionResult> DeleteUser(Guid id)
+    {
+        await _userService.DeleteUser(id);
+        return NoContent();
+    }
+
+
     [HttpPatch("{id:guid}/role")]
     [Authorize(Roles = "Admin, DeanOffice")]
     public async Task<IActionResult> UpdateUserRole(Guid id, [FromBody] List<UserRole> roles)
@@ -34,6 +51,4 @@ public class UsersController : ControllerBase
         await _userService.UpdateUserRoles(id, roles);
         return Ok(new { Message = "User roles updated successfully" });
     }
-
-    //...
 }

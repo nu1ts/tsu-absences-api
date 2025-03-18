@@ -101,6 +101,39 @@ namespace tsu_absences_api.Services
                 .ToListAsync();
         }
 
+        public async Task<UserDto> GetUserById(Guid id)
+        {
+            var user = await _dbContext.Users
+                .Include(u => u.UserRoles)
+                .FirstOrDefaultAsync(u => u.Id == id);
+
+            if (user == null)
+                throw new UserException();
+
+            return new UserDto
+            {
+                Id = user.Id,
+                FullName = user.FullName,
+                Email = user.Email,
+                Roles = user.UserRoles.Select(ur => ur.Role).ToList()
+            };
+        }
+
+        public async Task DeleteUser(Guid id)
+        {
+            var user = await _dbContext.Users
+                .Include(u => u.UserRoles)
+                .FirstOrDefaultAsync(u => u.Id == id);
+
+            if (user == null)
+                throw new UserException();
+
+            _dbContext.UserRoles.RemoveRange(user.UserRoles);
+            _dbContext.Users.Remove(user); 
+
+            await _dbContext.SaveChangesAsync();
+        }
+
         public async Task UpdateUserRoles(Guid id, List<UserRole> newRoles)
         {
             var user = await _dbContext.Users
