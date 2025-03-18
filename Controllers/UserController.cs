@@ -83,7 +83,7 @@ namespace blog_api.Controllers
             return Ok(user);
         }
 
-        [HttpGet("roles")]
+        /*[HttpGet("roles")]
         [Authorize]
         public IActionResult GetRoles()
         {
@@ -100,6 +100,6 @@ namespace blog_api.Controllers
         public IActionResult AdminOnly()
         {
             return Ok("This method is accessible only by Admins.");
-        }
+        }*/
     }
 }

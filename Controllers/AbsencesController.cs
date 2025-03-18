@@ -1,4 +1,6 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using tsu_absences_api.DTOs;
 using tsu_absences_api.Enums;
 using tsu_absences_api.Exceptions;
@@ -6,18 +8,12 @@ using tsu_absences_api.Interfaces;
 
 namespace tsu_absences_api.Controllers;
 
-//[Authorize(Roles = "Student")]
 [ApiController]
 [Route("api/absences")]
-public class AbsencesController(IAbsenceService absenceService)
-    : ControllerBase
+public class AbsencesController(IAbsenceService absenceService) : ControllerBase
 {
-    private Guid UserId { get; set; } =
-        Guid.Parse("033d63fa-d8a8-4675-a583-1acd9cf811e1"); // тестовый Guid пользователя
-
-    private bool IsDeanOffice { get; set; } = true; // тестовый bool
-
     [HttpPost]
+    [Authorize(Roles = "Student")]
     [Produces("application/json")]
     [ProducesResponseType(typeof(Guid), 200)]
     [ProducesResponseType(typeof(void), 400)]
@@ -30,8 +26,11 @@ public class AbsencesController(IAbsenceService absenceService)
 
         try
         {
-            //var userId = userService.GetUserId(User); // TODO: Нужна функция по получению ID пользователя из токена
-            var absence = await absenceService.CreateAbsenceAsync(UserId, dto);
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!Guid.TryParse(userIdClaim, out var userId))
+                throw new UnauthorizedAccessException("Invalid user ID.");
+            
+            var absence = await absenceService.CreateAbsenceAsync(userId, dto);
             return Ok(absence.Id);
         }
         catch (ArgumentException ex)
@@ -49,6 +48,7 @@ public class AbsencesController(IAbsenceService absenceService)
     }
 
     [HttpGet("{id:guid}")]
+    [Authorize(Roles = "Student, DeanOffice")]
     [Produces("application/json")]
     [ProducesResponseType(typeof(AbsenceDetailsDto), 200)]
     [ProducesResponseType(typeof(void), 401)]
@@ -59,10 +59,13 @@ public class AbsencesController(IAbsenceService absenceService)
     {
         try
         {
-            // var userId = userService.GetUserId(User);  // TODO: Нужна функция по получению ID пользователя из токена
-            // var isDeanOffice = userService.HasRole(User, "DeanOffice");  // TODO: Нужна проверка роли
-
-            var absenceDto = await absenceService.GetAbsenceAsync(UserId, id, IsDeanOffice);
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!Guid.TryParse(userIdClaim, out var userId))
+                throw new UnauthorizedAccessException("Invalid user ID.");
+            
+            var isDeanOffice = User.IsInRole("DeanOffice");
+            
+            var absenceDto = await absenceService.GetAbsenceAsync(userId, id, isDeanOffice);
             return Ok(absenceDto);
         }
         catch (UnauthorizedAccessException)
@@ -85,6 +88,7 @@ public class AbsencesController(IAbsenceService absenceService)
     }
 
     [HttpPut("{id:guid}")]
+    [Authorize(Roles = "Student, DeanOffice")]
     [Produces("application/json")]
     [ProducesResponseType(200)]
     [ProducesResponseType(typeof(void), 400)]
@@ -99,10 +103,13 @@ public class AbsencesController(IAbsenceService absenceService)
 
         try
         {
-            // var userId = userService.GetUserId(User);  // TODO: Нужна функция по получению ID пользователя из токена
-            // var isDeanOffice = userService.HasRole(User, "DeanOffice");  // TODO: Нужна проверка роли
-
-            await absenceService.UpdateAbsenceAsync(UserId, dto, id, IsDeanOffice);
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!Guid.TryParse(userIdClaim, out var userId))
+                throw new UnauthorizedAccessException("Invalid user ID.");
+            
+            var isDeanOffice = User.IsInRole("DeanOffice");
+            
+            await absenceService.UpdateAbsenceAsync(userId, dto, id, isDeanOffice);
             return Ok();
         }
         catch (ArgumentException ex)
@@ -129,6 +136,7 @@ public class AbsencesController(IAbsenceService absenceService)
     }
 
     [HttpGet]
+    [Authorize(Roles = "Student, DeanOffice, Teacher")]
     [Produces("application/json")]
     [ProducesResponseType(typeof(AbsenceListResponse), 200)]
     [ProducesResponseType(typeof(void), 400)]
@@ -139,35 +147,47 @@ public class AbsencesController(IAbsenceService absenceService)
         [FromQuery] AbsenceFilterDto filterDto,
         [FromQuery] AbsenceSorting sorting,
         [FromQuery] int page = 1,
-        [FromQuery] int size = 10)
+        [FromQuery] int size = 10,
+        [FromQuery] bool onlyMy = false)
     {
         if (page <= 0 || size <= 0)
             return BadRequest(new ErrorResponse { Status = "400", Message = "Invalid pagination parameters." });
 
         try
         {
-            // var userId = userService.GetUserId(User);  // TODO: Нужна функция по получению ID пользователя из токена
-            // var isDeanOffice = userService.HasRole(User, "DeanOffice");  // TODO: Нужна проверка роли
-
-            if (IsDeanOffice)
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!Guid.TryParse(userIdClaim, out var userId))
+                throw new UnauthorizedAccessException("Invalid user ID.");
+            
+            var isDeanOffice = User.IsInRole("DeanOffice");
+            var isStudent = User.IsInRole("Student");
+            var isTeacher = User.IsInRole("Teacher");
+            
+            AbsenceListResponse? absences;
+            
+            if (isDeanOffice)
             {
-                var absences = await absenceService.GetAbsencesAsync(filterDto, sorting, page, size);
+                absences = await absenceService.GetAbsencesAsync(filterDto, sorting, page, size);
                 return Ok(absences);
             }
 
-            if (User.IsInRole("Student"))
+            if (isStudent && !isTeacher)
             {
-                var absences = await absenceService
-                    .GetAbsencesForStudentAsync(UserId, filterDto, sorting, page, size);
+                absences = await absenceService.GetAbsencesForStudentAsync(userId, filterDto, sorting, page, size);
                 return Ok(absences);
             }
 
-            if (User.IsInRole("Teacher"))
+            if (isTeacher && !isStudent)
             {
-                var absences = await absenceService.GetAbsencesForTeacherAsync(filterDto, sorting, page, size);
+                absences = await absenceService.GetAbsencesForTeacherAsync(filterDto, sorting, page, size);
                 return Ok(absences);
             }
-
+            
+            absences = await absenceService.GetAbsencesForTeacherAsync(filterDto, sorting, page, size, userId, onlyMy);
+            return Ok(absences);
+        }
+        catch (UnauthorizedAccessException)
+        {
             return Unauthorized(new ErrorResponse { Status = "401", Message = "You aren't authorized." });
         }
         catch (Exception)
@@ -177,6 +197,7 @@ public class AbsencesController(IAbsenceService absenceService)
     }
     
     [HttpGet("export")]
+    [Authorize(Roles = "DeanOffice, Teacher")]
     [Produces("application/json")]
     [ProducesResponseType(typeof(void), 200)]
     [ProducesResponseType(typeof(void), 400)]
@@ -192,27 +213,27 @@ public class AbsencesController(IAbsenceService absenceService)
         if (!ModelState.IsValid)
             return BadRequest(new ErrorResponse { Status = "400", Message = "Invalid data provided." });
 
-        // var userId = userService.GetUserId(User);  // TODO: Нужна функция по получению ID пользователя из токена
-        // var isDeanOffice = userService.HasRole(User, "DeanOffice");  // TODO: Нужна проверка роли
-
         try
         {
-            if (IsDeanOffice)
+            var isDeanOffice = User.IsInRole("DeanOffice");
+            var isTeacher = User.IsInRole("Teacher");
+
+            if (isDeanOffice)
             {
                 var fileBytes = await absenceService
                     .ExportAbsencesToExcelAsync(filterDto, startDate, endDate, studentIds);
                 var fileName = $"Absences_{DateTime.UtcNow:yyyy-MM-dd}.xlsx";
                 return File(fileBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
-            } 
-            
-            if (User.IsInRole("Teacher"))
+            }
+
+            if (isTeacher && !isDeanOffice)
             {
                 var fileBytes = await absenceService
                     .ExportAbsencesToExcelForTeacherAsync(filterDto, startDate, endDate, studentIds);
                 var fileName = $"Absences_{DateTime.UtcNow:yyyy-MM-dd}.xlsx";
                 return File(fileBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
             }
-            
+
             return StatusCode(403,
                 new ErrorResponse { Status = "403", Message = "You don't have permission to export absences." });
         }
@@ -224,6 +245,10 @@ public class AbsencesController(IAbsenceService absenceService)
         {
             return Unauthorized(new ErrorResponse { Status = "401", Message = "You aren't authorized." });
         }
+        catch (ForbiddenAccessException)
+        {
+            return StatusCode(403, new ErrorResponse { Status = "403", Message = "You don't have permission to export absences." });
+        }
         catch (Exception)
         {
             return StatusCode(500, new ErrorResponse { Status = "500", Message = "Internal Server Error" });
@@ -231,6 +256,7 @@ public class AbsencesController(IAbsenceService absenceService)
     }
     
     [HttpPatch("{id:guid}/approve")]
+    [Authorize(Roles = "DeanOffice")]
     [Produces("application/json")]
     [ProducesResponseType(200)]
     [ProducesResponseType(typeof(void), 400)]
@@ -240,11 +266,11 @@ public class AbsencesController(IAbsenceService absenceService)
     [ProducesResponseType(typeof(ErrorResponse), 500)]
     public async Task<IActionResult> ApproveAbsence(Guid id)
     {
-        // var isDeanOffice = userService.HasRole(User, "DeanOffice");  // TODO: Нужна проверка роли
-        
         try
         {
-            if (!IsDeanOffice)
+            var isDeanOffice = User.IsInRole("DeanOffice");
+            
+            if (!isDeanOffice)
                 return StatusCode(403, 
                     new ErrorResponse { Status = "403", Message = "You don't have permission to approve absences." });
             
@@ -271,6 +297,7 @@ public class AbsencesController(IAbsenceService absenceService)
     }
     
     [HttpPatch("{id:guid}/reject")]
+    [Authorize(Roles = "DeanOffice")]
     [Produces("application/json")]
     [ProducesResponseType(200)]
     [ProducesResponseType(typeof(void), 400)]
@@ -283,11 +310,11 @@ public class AbsencesController(IAbsenceService absenceService)
         if (!ModelState.IsValid)
             return BadRequest(new ErrorResponse { Status = "400", Message = "Invalid data provided." });
         
-        // var isDeanOffice = userService.HasRole(User, "DeanOffice");  // TODO: Нужна проверка роли
-        
         try
         {
-            if (!IsDeanOffice)
+            var isDeanOffice = User.IsInRole("DeanOffice");
+            
+            if (!isDeanOffice)
                 return StatusCode(403, 
                     new ErrorResponse { Status = "403", Message = "You don't have permission to reject absences." });
 
@@ -314,6 +341,7 @@ public class AbsencesController(IAbsenceService absenceService)
     }
     
     [HttpPatch("{id:guid}/extend")]
+    [Authorize(Roles = "Student, DeanOffice")]
     [Produces("application/json")]
     [ProducesResponseType(200)]
     [ProducesResponseType(typeof(void), 400)]
@@ -328,14 +356,13 @@ public class AbsencesController(IAbsenceService absenceService)
 
         try
         {
-            // var userId = userService.GetUserId(User); // TODO: Получение ID пользователя из токена
-            // var isDeanOffice = userService.HasRole(User, "DeanOffice");  // TODO: Нужна проверка роли
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!Guid.TryParse(userIdClaim, out var userId))
+                throw new UnauthorizedAccessException("Invalid user ID.");
         
-            if (IsDeanOffice)
-                await absenceService.ExtendAbsenceAsync(UserId, id, dto);
+            var isDeanOffice = User.IsInRole("DeanOffice");
             
-            if(User.IsInRole("Student"))
-                await absenceService.ExtendAbsenceAsync(UserId, id, dto, false);
+            await absenceService.ExtendAbsenceAsync(userId, id, dto, isDeanOffice);
 
             return Ok();
         }
