@@ -134,6 +134,27 @@ namespace tsu_absences_api.Services
             await _dbContext.SaveChangesAsync();
         }
 
+        public async Task<UserDto> UpdateUser(Guid id, UserDto updatedUser)
+        {
+            var user = await _dbContext.Users.FindAsync(id);
+
+            if (user == null)
+                throw new UserException();
+
+            user.FullName = updatedUser.FullName;
+            user.Email = updatedUser.Email;
+
+            await _dbContext.SaveChangesAsync();
+
+            return new UserDto
+            {
+                Id = user.Id,
+                FullName = user.FullName,
+                Email = user.Email
+            };
+        }
+
+
         public async Task UpdateUserRoles(Guid id, List<UserRole> newRoles)
         {
             var user = await _dbContext.Users

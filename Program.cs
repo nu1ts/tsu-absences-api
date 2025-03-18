@@ -49,12 +49,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         options.EventsType = typeof(JwtEvents);
     });
 
-builder.Services.AddAuthorization(options => 
-{
-    options.AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"));
-    options.AddPolicy("TeacherOnly", policy => policy.RequireRole("Teacher"));
-    options.AddPolicy("StudentOnly", policy => policy.RequireRole("Student"));
-});
+builder.Services.AddAuthorization();
 
 builder.Services.AddScoped<UserService>();
 builder.Services.AddScoped<TokenService>();

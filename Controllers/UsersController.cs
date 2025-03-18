@@ -43,6 +43,13 @@ public class UsersController : ControllerBase
         return NoContent();
     }
 
+    [HttpPut("{id:guid}")]
+    [Authorize(Roles = "Admin, DeanOffice")]
+    public async Task<IActionResult> UpdateUser(Guid id, [FromBody] UserDto updatedUser)
+    {
+        var user = await _userService.UpdateUser(id, updatedUser);
+        return Ok(user);
+    }
 
     [HttpPatch("{id:guid}/role")]
     [Authorize(Roles = "Admin, DeanOffice")]
