@@ -37,6 +37,9 @@ jobs:
       - name: 🔨 Build project
         run: dotnet build tsu-absences-api.sln --configuration Release --no-restore
 
+      - name: ✨ Fix whitespace issues
+        run: dotnet format whitespace /home/runner/work/tsu-absences-api/tsu-absences-api/tsu-absences-api.sln
+         
       - name: 🎨 Code style check (dotnet format)
         run: dotnet format --verify-no-changes /home/runner/work/tsu-absences-api/tsu-absences-api/tsu-absences-api.sln
         continue-on-error: false
