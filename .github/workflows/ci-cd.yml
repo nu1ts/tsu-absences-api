@@ -1,0 +1,100 @@
+﻿name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  build-and-test:
+    name: 🏗️ Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: ⚡ Setup .NET 8
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: 💾 Cache NuGet packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: 📦 Restore dependencies
+        run: dotnet restore
+
+      - name: 🔨 Build project
+        run: dotnet build --configuration Release --no-restore
+
+      - name: 🎨 Code style check (dotnet format)
+        run: dotnet format --verify-no-changes
+        continue-on-error: true
+
+      - name: 🛡️ Static Code Analysis (CodeQL)
+        uses: github/codeql-action/analyze@v2
+        with:
+          category: "security"
+
+      - name: 🔍 SonarQube Analysis (optional)
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          dotnet tool install --global dotnet-sonarscanner
+          dotnet sonarscanner begin /k:"your-project-key" /d:sonar.host.url="https://sonarcloud.io" /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
+          dotnet build --configuration Release
+          dotnet sonarscanner end /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
+
+  deploy:
+    name: 🚀 Deploy
+    if: github.ref == 'refs/heads/main'
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Set up Docker
+        run: |
+          echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+      - name: 🏗️ Build Docker image
+        run: docker build -t your-dockerhub-user/your-app:latest .
+
+      - name: 📤 Push Docker image
+        run: docker push your-dockerhub-user/your-app:latest
+
+      - name: 🖥️ Deploy to Server (SSH)
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            docker pull your-dockerhub-user/your-app:latest
+            docker stop my_app || true
+            docker rm my_app || true
+            docker run -d --name my_app -p 80:5000 your-dockerhub-user/your-app:latest
+
+  notify:
+    name: 🔔 Notify Telegram
+    if: failure()
+    needs: [build-and-test, deploy]
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📩 Send notification
+        uses: appleboy/telegram-action@v0.1.1
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          message: "❌ Ошибка в CI/CD: Job ${{ github.job }} не прошел.\nRepo: ${{ github.repository }}\nCommit: ${{ github.sha }}\nПодробнее: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
