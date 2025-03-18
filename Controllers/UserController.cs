@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 
-namespace blog_api.Controllers
+namespace tsu_absences_api.Controllers
 {
     [ApiController]
     [Route("api/account")]

@@ -58,6 +58,11 @@ namespace tsu_absences_api.Services
         
         public async Task<Response> LogoutUser(string token)
         {
+            if (string.IsNullOrEmpty(token))
+            {
+                throw new ArgumentException("Token is required for logout");
+            }
+
             var jwtToken = new JwtSecurityTokenHandler().ReadJwtToken(token);
             var expirationDate = jwtToken.ValidTo;
 
