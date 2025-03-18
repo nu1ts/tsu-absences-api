@@ -3,6 +3,8 @@ using tsu_absences_api.Data;
 using tsu_absences_api.Models;
 using Microsoft.EntityFrameworkCore;
 using tsu_absences_api.Exceptions;
+using System.Security.Claims;
+using tsu_absences_api.Enums;
 
 namespace tsu_absences_api.Services
 {
@@ -31,13 +33,17 @@ namespace tsu_absences_api.Services
                 Password = BCrypt.Net.BCrypt.HashPassword(model.Password),
                 Email = model.Email,
                 GroupId = model.GroupId,
-                Roles = new List<UserRole> { UserRole.Student }
+                UserRoles = new List<UserRoleMapping>()
             };
+
+            var defaultRole = new UserRoleMapping { UserId = user.Id, Role = UserRole.Student };
+            user.UserRoles.Add(defaultRole);
             
             await _dbContext.Users.AddAsync(user);
+            await _dbContext.UserRoles.AddAsync(defaultRole);
             await _dbContext.SaveChangesAsync();
             
-            var token = _tokenService.GenerateJwtToken(user.Id, user.Roles);
+            var token = _tokenService.GenerateJwtToken(user.Id, user.UserRoles.Select(ur => ur.Role).ToList());
             
             return new TokenResponse { Token = token };
         }
@@ -51,7 +57,7 @@ namespace tsu_absences_api.Services
             if (!BCrypt.Net.BCrypt.Verify(credentials.Password, user.Password))
                 throw new LoginException();
 
-            var token = _tokenService.GenerateJwtToken(user.Id, user.Roles);
+            var token = _tokenService.GenerateJwtToken(user.Id, user.UserRoles.Select(ur => ur.Role).ToList());
 
             return new TokenResponse { Token = token };
         }
@@ -71,23 +77,76 @@ namespace tsu_absences_api.Services
             return new Response { Status = "200 OK", Message = "Logged out" };
         }
         
-        public async Task<UserDto> GetUserProfile(Guid userId)
+        public async Task<List<UserDto>> GetUsers(string? name, UserRole? role, int page, int size, ClaimsPrincipal user)
         {
-            var user = await _dbContext.Users
-                .AsNoTracking()
-                .SingleOrDefaultAsync(u => u.Id == userId);
-            
-            if (user == null)
-                throw new UserException();
-            
-            var userDto = new UserDto
-            {
-                Id = user.Id,
-                FullName = user.FullName,
-                Email = user.Email
-            };
+            var query = _dbContext.Users
+                .Include(u => u.UserRoles)
+                .AsQueryable();
 
-            return userDto;
+            if (!string.IsNullOrEmpty(name))
+            {
+                query = query.Where(u => u.FullName.Contains(name));
+                Console.WriteLine($"[DEBUG] Filtering by name: {name}");
+            }
+
+            if (role.HasValue)
+            {
+                var allRoles = await _dbContext.Users
+                    .Include(u => u.UserRoles)
+                    .Select(u => new 
+                    { 
+                        u.Id, 
+                        Roles = u.UserRoles.Select(ur => ur.Role).ToList()  // <-- Теперь явно извлекаем роли
+                    })
+                    .ToListAsync();
+
+                Console.WriteLine("[DEBUG] Users and their roles:");
+                foreach (var ruser in allRoles)
+                {
+                    Console.WriteLine($"User ID: {ruser.Id}, Roles: {string.Join(", ", ruser.Roles)}");
+                }
+
+                Console.WriteLine($"[DEBUG] Filtering by role: {role.Value}");
+                query = query.Where(u => u.UserRoles.Any(r => r.Role == role.Value));
+            }
+
+            bool isOnlyTeacher = user.Claims
+                .Where(c => c.Type == ClaimTypes.Role)
+                .Select(c => Enum.Parse<UserRole>(c.Value))
+                .All(r => r == UserRole.Teacher);
+
+            if (isOnlyTeacher)
+            {
+                var approvedUserIds = await _dbContext.Absences
+                    .Where(a => a.Status == AbsenceStatus.Approved)
+                    .Select(a => a.UserId)
+                    .Distinct()
+                    .ToListAsync();
+
+                query = query.Where(u => approvedUserIds.Contains(u.Id));
+            }
+
+            int totalUsers = await query.CountAsync();
+            Console.WriteLine($"[DEBUG] Total users before pagination: {totalUsers}");
+
+            query = query.Skip((page - 1) * size).Take(size);
+            Console.WriteLine($"[DEBUG] Pagination: page={page}, size={size}");
+
+            var users = await query
+                .Skip((page - 1) * size)
+                .Take(size)
+                .Select(u => new UserDto
+                {
+                    Id = u.Id,
+                    FullName = u.FullName,
+                    Email = u.Email,
+                    Roles = u.UserRoles.Select(ur => ur.Role).ToList()
+                })
+                .ToListAsync();
+
+            Console.WriteLine($"[DEBUG] Users returned: {users.Count}");
+
+            return users;
         }
     }
 }

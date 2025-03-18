@@ -20,14 +20,22 @@ namespace tsu_absences_api.Models
         public string Email { get; set; } = string.Empty;
         public string? GroupId { get; set; }
 
-        public List<UserRole> Roles { get; set; } = [UserRole.Student];
+        public List<UserRoleMapping> UserRoles { get; set; } = new List<UserRoleMapping>();
+    }
+
+    public class UserRoleMapping
+    {
+        public Guid UserId { get; set; }
+        public User User { get; set; }
+
+        public UserRole Role { get; set; }
     }
 
     public enum UserRole
     {
-        Admin,
-        DeanOffice,
+        Student,
         Teacher,
-        Student
+        Admin,
+        DeanOffice
     }
 }

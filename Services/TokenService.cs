@@ -23,10 +23,7 @@ public class TokenService
             new (JwtRegisteredClaimNames.Aud, AuthOptions.Audience)
         };
         
-        foreach (var role in roles)
-        {
-            claims.Add(new Claim(ClaimTypes.Role, role.ToString()));
-        }
+        claims.AddRange(roles.Select(role => new Claim(ClaimTypes.Role, role.ToString())));
 
         var key = AuthOptions.GetSymmetricSecurityKey();
         var credits = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
