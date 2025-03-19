@@ -166,18 +166,19 @@ public class AbsenceService(AppDbContext context, IFileService fileService) : IA
         var totalAbsences = await query.CountAsync();
         var absences = await query.Skip((page - 1) * size)
                                   .Take(size)
-                                  .Select(a => new AbsenceDto
-                                  {
-                                      Id = a.Id,
-                                      UserId = a.UserId,
-                                      StudentName = "Иванов Иван Иванович",
-                                      //StudentName = a.Student.Name, // TODO: Cделать подгрузку из таблицы юзеров
-                                      //Group = a.Student.Group,
-                                      CreatedAt = a.CreatedAt,
-                                      UpdatedAt = a.UpdatedAt,
-                                      Type = a.Type,
-                                      Status = a.Status
-                                  })
+                                  .Join(context.Users, 
+                                      a => a.UserId,
+                                      u => u.Id,
+                                      (a, u) => new AbsenceDto { 
+                                          Id = a.Id,
+                                          UserId = a.UserId,
+                                          StudentName = u.FullName,
+                                          Group = u.GroupId,
+                                          CreatedAt = a.CreatedAt,
+                                          UpdatedAt = a.UpdatedAt,
+                                          Type = a.Type,
+                                          Status = a.Status
+                                      })
                                   .ToListAsync();
 
         return new AbsenceListResponse
@@ -188,14 +189,42 @@ public class AbsenceService(AppDbContext context, IFileService fileService) : IA
             Absences = absences
         };
     }
-    public async Task<AbsenceListResponse> GetAbsencesForStudentAsync(Guid studentId, AbsenceFilterDto filterDto, AbsenceSorting sorting, int page, int size)
+    public async Task<AbsenceListResponse> GetAbsencesForStudentAsync(
+        Guid studentId, 
+        AbsenceFilterDto filterDto, 
+        AbsenceSorting sorting, 
+        int page, 
+        int size)
     {
         var query = context.Absences.Where(a => a.UserId == studentId);
         return await GetAbsencesAsync(filterDto, sorting, page, size, query);
     }
-    public async Task<AbsenceListResponse> GetAbsencesForTeacherAsync(AbsenceFilterDto filterDto, AbsenceSorting sorting, int page, int size)
+    public async Task<AbsenceListResponse> GetAbsencesForTeacherAsync(
+        AbsenceFilterDto filterDto, 
+        AbsenceSorting sorting, 
+        int page, 
+        int size, 
+        Guid? teacherId,
+        bool? onlyMy = false)
     {
-        var query = context.Absences.Where(a => a.Status == AbsenceStatus.Approved);
+        IQueryable<Absence> query;
+
+        if (teacherId == null)
+        {
+            query = context.Absences
+                .Where(a => a.Status == AbsenceStatus.Approved);
+        }
+        else if (onlyMy == true)
+        {
+            query = context.Absences
+                .Where(a => a.UserId == teacherId);
+        }
+        else
+        {
+            query = context.Absences
+                .Where(a => a.UserId == teacherId || a.Status == AbsenceStatus.Approved);
+        }
+
         return await GetAbsencesAsync(filterDto, sorting, page, size, query);
     }
     
@@ -206,18 +235,23 @@ public class AbsenceService(AppDbContext context, IFileService fileService) : IA
         
         query = ApplyFilters(query, filterDto, startDate, endDate, studentIds);
 
-        var absences = await query.Select(a => new AbsenceExportDto
-        { 
-            StudentName = "Иванов Иван Иванович", // TODO: Подгрузить из таблицы пользователей
-            //Group = a.Student.Group,
-            CreatedAt = a.CreatedAt,
-            UpdatedAt = a.UpdatedAt,
-            Type = a.Type,
-            StartDate = a.StartDate,
-            EndDate = a.EndDate,
-            Status = a.Status,
-            DeclarationToDean = a.DeclarationToDean
-        }).ToListAsync();
+        var absences = await query
+            .Join(context.Users, 
+                a => a.UserId,
+                u => u.Id,
+                (a, u) => new AbsenceExportDto
+                {
+                    StudentName = u.FullName,
+                    Group = u.GroupId,
+                    CreatedAt = a.CreatedAt,
+                    UpdatedAt = a.UpdatedAt,
+                    Type = a.Type,
+                    StartDate = a.StartDate,
+                    EndDate = a.EndDate,
+                    Status = a.Status,
+                    DeclarationToDean = a.DeclarationToDean
+                })
+            .ToListAsync();
         
         return GenerateExcelFile(absences, isDeanOffice);
     }
@@ -309,7 +343,7 @@ public class AbsenceService(AppDbContext context, IFileService fileService) : IA
         await context.SaveChangesAsync();
     }
     
-    public async Task ExtendAbsenceAsync(Guid userId, Guid id, ExtendAbsenceDto dto, bool? isDeanOffice = true)
+    public async Task ExtendAbsenceAsync(Guid userId, Guid id, ExtendAbsenceDto dto, bool isDeanOffice)
     {
         var absence = await context.Absences.FirstOrDefaultAsync(a => a.Id == id);
         
@@ -378,7 +412,7 @@ public class AbsenceService(AppDbContext context, IFileService fileService) : IA
         absence.EndDate = dto.NewEndDate;
         absence.UpdatedAt = DateTime.UtcNow;
         
-        if (isDeanOffice == true && absence.Type == AbsenceType.Academic && dto.ApproveImmediately == true)
+        if (isDeanOffice && absence.Type == AbsenceType.Academic && dto.ApproveImmediately == true)
             absence.Status = AbsenceStatus.Approved;
         else
             absence.Status = AbsenceStatus.Pending;
@@ -386,7 +420,7 @@ public class AbsenceService(AppDbContext context, IFileService fileService) : IA
         await context.SaveChangesAsync();
     }
     
-    private static IQueryable<Absence> ApplyFilters(IQueryable<Absence> query, AbsenceFilterDto filterDto,
+    private IQueryable<Absence> ApplyFilters(IQueryable<Absence> query, AbsenceFilterDto filterDto,
         DateTime? startDate = null, DateTime? endDate = null, List<Guid>? studentIds = null)
     {
         if (startDate.HasValue || endDate.HasValue)
@@ -397,9 +431,7 @@ public class AbsenceService(AppDbContext context, IFileService fileService) : IA
         }
 
         if (studentIds?.Count > 0)
-        {
             query = query.Where(a => studentIds.Contains(a.UserId));
-        }
     
         if (filterDto.Status != null)
             query = query.Where(a => a.Status == filterDto.Status);
@@ -407,12 +439,25 @@ public class AbsenceService(AppDbContext context, IFileService fileService) : IA
         if (filterDto.Type != null)
             query = query.Where(a => a.Type == filterDto.Type);
 
-        // TODO: Подгрузка из таблицы юзеров
-        /*if (!string.IsNullOrEmpty(filterDto.Group))
-            query = query.Include(a => a.User).Where(a => a.User.Group.Contains(filterDto.Group));
+        if (!string.IsNullOrEmpty(filterDto.Group))
+        {
+            query = query.Join(context.Users, 
+                    a => a.UserId, 
+                    u => u.Id, 
+                    (a, u) => new { Absence = a, User = u })
+                .Where(x => x.User.GroupId!.Contains(filterDto.Group))
+                .Select(x => x.Absence);
+        }
 
         if (!string.IsNullOrEmpty(filterDto.StudentName))
-            query = query.Include(a => a.User).Where(a => a.User.Name.Contains(filterDto.StudentName));*/
+        {
+            query = query.Join(context.Users, 
+                    a => a.UserId, 
+                    u => u.Id, 
+                    (a, u) => new { Absence = a, User = u })
+                .Where(x => x.User.FullName.Contains(filterDto.StudentName))
+                .Select(x => x.Absence);
+        }
 
         return query;
     }
