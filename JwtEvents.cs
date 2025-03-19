@@ -1,8 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
-using tsu_absences_api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-
-namespace tsu_absences_api;
+using tsu_absences_api.Services;
 
 public class JwtEvents : JwtBearerEvents
 {
@@ -15,10 +13,24 @@ public class JwtEvents : JwtBearerEvents
 
     public override async Task TokenValidated(TokenValidatedContext context)
     {
-        if (context.SecurityToken is JwtSecurityToken { RawData: var tokenRaw } 
-            && await _blacklistService.IsTokenBlacklisted(tokenRaw))
+        string? tokenRaw = (context.SecurityToken as JwtSecurityToken)?.RawData;
+
+        if (string.IsNullOrEmpty(tokenRaw) &&
+            context.HttpContext.Request.Headers.TryGetValue("Authorization", out var authHeader))
         {
-            context.Fail("Access denied: Token is banned");
+            tokenRaw = authHeader.ToString().Replace("Bearer ", "").Trim();
+        }
+
+        if (string.IsNullOrEmpty(tokenRaw))
+        {
+            context.Fail("Access denied: No valid token provided");
+            return;
+        }
+
+        if (await _blacklistService.IsTokenBlacklisted(tokenRaw))
+        {
+            context.Fail("Access denied: Token is blacklisted");
+            return;
         }
     }
 }

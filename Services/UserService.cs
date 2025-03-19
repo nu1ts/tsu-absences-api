@@ -3,6 +3,7 @@ using tsu_absences_api.Data;
 using tsu_absences_api.Models;
 using Microsoft.EntityFrameworkCore;
 using tsu_absences_api.Exceptions;
+using System.Security.Claims;
 
 namespace tsu_absences_api.Services
 {
@@ -31,33 +32,42 @@ namespace tsu_absences_api.Services
                 Password = BCrypt.Net.BCrypt.HashPassword(model.Password),
                 Email = model.Email,
                 GroupId = model.GroupId,
-                Roles = new List<UserRole> { UserRole.Student }
+                UserRoles = new List<UserRoleMapping>()
             };
+
+            var defaultRole = new UserRoleMapping { UserId = user.Id, Role = UserRole.Student };
+            user.UserRoles.Add(defaultRole);
             
             await _dbContext.Users.AddAsync(user);
+            await _dbContext.UserRoles.AddAsync(defaultRole);
             await _dbContext.SaveChangesAsync();
             
-            var token = _tokenService.GenerateJwtToken(user.Id, user.Roles);
+            var token = _tokenService.GenerateJwtToken(user.Id, user.UserRoles.Select(ur => ur.Role).ToList());
             
             return new TokenResponse { Token = token };
         }
 
         public async Task<TokenResponse> LoginUser(LoginCredentials credentials)
         {
-            var user = await _dbContext.Users.SingleOrDefaultAsync(u => u.Email == credentials.Email);
-            if (user == null)
+            var user = await _dbContext.Users
+                .Include(u => u.UserRoles)
+                .FirstOrDefaultAsync(u => u.Email == credentials.Email);
+            
+            if (user == null || !BCrypt.Net.BCrypt.Verify(credentials.Password, user.Password))
                 throw new LoginException();
-
-            if (!BCrypt.Net.BCrypt.Verify(credentials.Password, user.Password))
-                throw new LoginException();
-
-            var token = _tokenService.GenerateJwtToken(user.Id, user.Roles);
+            
+            var token = _tokenService.GenerateJwtToken(user.Id, user.UserRoles.Select(ur => ur.Role).ToList());
 
             return new TokenResponse { Token = token };
         }
         
         public async Task<Response> LogoutUser(string token)
         {
+            if (string.IsNullOrEmpty(token))
+            {
+                throw new ArgumentException("Token is required for logout");
+            }
+
             var jwtToken = new JwtSecurityTokenHandler().ReadJwtToken(token);
             var expirationDate = jwtToken.ValidTo;
 
@@ -66,23 +76,104 @@ namespace tsu_absences_api.Services
             return new Response { Status = "200 OK", Message = "Logged out" };
         }
         
-        public async Task<UserDto> GetUserProfile(Guid userId)
+        public async Task<List<UserDto>> GetUsers(string? name, UserRole? role, int page, int size, ClaimsPrincipal user)
+        {
+            var query = _dbContext.Users
+                .Include(u => u.UserRoles)
+                .AsQueryable();
+
+            if (!string.IsNullOrEmpty(name))
+                query = query.Where(u => u.FullName.Contains(name));
+                
+            if (role.HasValue)
+                query = query.Where(u => u.UserRoles.Any(r => r.Role == role.Value));
+
+            return await query
+                .Skip((page - 1) * size)
+                .Take(size)
+                .Select(u => new UserDto
+                {
+                    Id = u.Id,
+                    FullName = u.FullName,
+                    Email = u.Email,
+                    Roles = u.UserRoles.Select(ur => ur.Role).ToList()
+                })
+                .ToListAsync();
+        }
+
+        public async Task<UserDto> GetUserById(Guid id)
         {
             var user = await _dbContext.Users
-                .AsNoTracking()
-                .SingleOrDefaultAsync(u => u.Id == userId);
-            
+                .Include(u => u.UserRoles)
+                .FirstOrDefaultAsync(u => u.Id == id);
+
             if (user == null)
                 throw new UserException();
-            
-            var userDto = new UserDto
+
+            return new UserDto
+            {
+                Id = user.Id,
+                FullName = user.FullName,
+                Email = user.Email,
+                Roles = user.UserRoles.Select(ur => ur.Role).ToList()
+            };
+        }
+
+        public async Task DeleteUser(Guid id)
+        {
+            var user = await _dbContext.Users
+                .Include(u => u.UserRoles)
+                .FirstOrDefaultAsync(u => u.Id == id);
+
+            if (user == null)
+                throw new UserException();
+
+            _dbContext.UserRoles.RemoveRange(user.UserRoles);
+            _dbContext.Users.Remove(user); 
+
+            await _dbContext.SaveChangesAsync();
+        }
+
+        public async Task<UserDto> UpdateUser(Guid id, UserDto updatedUser)
+        {
+            var user = await _dbContext.Users.FindAsync(id);
+
+            if (user == null)
+                throw new UserException();
+
+            user.FullName = updatedUser.FullName;
+            user.Email = updatedUser.Email;
+
+            await _dbContext.SaveChangesAsync();
+
+            return new UserDto
             {
                 Id = user.Id,
                 FullName = user.FullName,
                 Email = user.Email
             };
-
-            return userDto;
         }
+
+
+        public async Task UpdateUserRoles(Guid id, List<UserRole> newRoles)
+        {
+            var user = await _dbContext.Users
+                .Include(u => u.UserRoles)
+                .FirstOrDefaultAsync(u => u.Id == id);
+
+            if (user == null)
+                throw new UserException();
+
+            _dbContext.UserRoles.RemoveRange(user.UserRoles);
+
+            user.UserRoles = newRoles.Select(r => new UserRoleMapping
+            {
+                UserId = user.Id,
+                Role = r
+            }).ToList();
+
+            await _dbContext.SaveChangesAsync();
+        }
+
     }
 }
