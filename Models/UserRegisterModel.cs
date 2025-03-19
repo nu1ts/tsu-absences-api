@@ -20,6 +20,4 @@ public class UserRegisterModel
     public string Email { get; set; }
 
     public string? GroupId { get; set; }
-
-    public List<UserRole> Roles { get; set; } = [UserRole.Student];
 }
