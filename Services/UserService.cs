@@ -1,6 +1,7 @@
 using System.IdentityModel.Tokens.Jwt;
 using tsu_absences_api.Data;
 using tsu_absences_api.Models;
+using tsu_absences_api.DTOs;
 using Microsoft.EntityFrameworkCore;
 using tsu_absences_api.Exceptions;
 using System.Security.Claims;
@@ -87,6 +88,10 @@ namespace tsu_absences_api.Services
                 
             if (role.HasValue)
                 query = query.Where(u => u.UserRoles.Any(r => r.Role == role.Value));
+            
+            query = query.Where(u => !u.UserRoles.Any(r => r.Role == UserRole.Admin));
+            
+            query = query.OrderBy(u => u.FullName);
 
             return await query
                 .Skip((page - 1) * size)
@@ -96,7 +101,8 @@ namespace tsu_absences_api.Services
                     Id = u.Id,
                     FullName = u.FullName,
                     Email = u.Email,
-                    Roles = u.UserRoles.Select(ur => ur.Role).ToList()
+                    Roles = u.UserRoles.Select(ur => ur.Role).ToList(),
+                    GroupId = u.GroupId
                 })
                 .ToListAsync();
         }
@@ -115,11 +121,12 @@ namespace tsu_absences_api.Services
                 Id = user.Id,
                 FullName = user.FullName,
                 Email = user.Email,
-                Roles = user.UserRoles.Select(ur => ur.Role).ToList()
+                Roles = user.UserRoles.Select(ur => ur.Role).ToList(),
+                GroupId = user.GroupId
             };
         }
 
-        public async Task DeleteUser(Guid id)
+        public async Task DeleteUser(Guid id, ClaimsPrincipal currentUser)
         {
             var user = await _dbContext.Users
                 .Include(u => u.UserRoles)
@@ -127,6 +134,22 @@ namespace tsu_absences_api.Services
 
             if (user == null)
                 throw new UserException();
+
+            var currentUserId = Guid.Parse(currentUser.FindFirst(ClaimTypes.NameIdentifier)?.Value);
+
+            if (currentUserId == id)
+                throw new ForbiddenAccessException("You cannot delete yourself");
+
+            var currentRoles = currentUser.Claims
+                .Where(c => c.Type == ClaimTypes.Role)
+                .Select(c => Enum.Parse<UserRole>(c.Value))
+                .ToList();
+
+            bool isTargetAdmin = user.UserRoles.Any(r => r.Role == UserRole.Admin);
+            bool isCurrentDean = currentRoles.Contains(UserRole.DeanOffice);
+            
+            if (isCurrentDean && isTargetAdmin)
+                throw new ForbiddenAccessException("DeanOffice cannot delete an Admin");
 
             _dbContext.UserRoles.RemoveRange(user.UserRoles);
             _dbContext.Users.Remove(user); 
@@ -134,15 +157,22 @@ namespace tsu_absences_api.Services
             await _dbContext.SaveChangesAsync();
         }
 
-        public async Task<UserDto> UpdateUser(Guid id, UserDto updatedUser)
+        public async Task<UserDto> UpdateUser(Guid id, UserUpdateDto updatedUser)
         {
-            var user = await _dbContext.Users.FindAsync(id);
+             var user = await _dbContext.Users
+                .Include(u => u.UserRoles)
+                .FirstOrDefaultAsync(u => u.Id == id);
 
             if (user == null)
                 throw new UserException();
 
             user.FullName = updatedUser.FullName;
             user.Email = updatedUser.Email;
+            
+            if (!string.IsNullOrEmpty(updatedUser.GroupId))
+            {
+                user.GroupId = updatedUser.GroupId;
+            }
 
             await _dbContext.SaveChangesAsync();
 
@@ -150,12 +180,14 @@ namespace tsu_absences_api.Services
             {
                 Id = user.Id,
                 FullName = user.FullName,
-                Email = user.Email
+                Email = user.Email,
+                Roles = user.UserRoles.Select(ur => ur.Role).ToList(),
+                GroupId = user.GroupId
             };
         }
 
 
-        public async Task UpdateUserRoles(Guid id, List<UserRole> newRoles)
+        public async Task UpdateUserRoles(Guid id, List<UserRole> newRoles, ClaimsPrincipal currentUser)
         {
             var user = await _dbContext.Users
                 .Include(u => u.UserRoles)
@@ -163,6 +195,17 @@ namespace tsu_absences_api.Services
 
             if (user == null)
                 throw new UserException();
+
+            var currentRoles = currentUser.Claims
+                .Where(c => c.Type == ClaimTypes.Role)
+                .Select(c => Enum.Parse<UserRole>(c.Value))
+                .ToList();
+
+            if (newRoles.Contains(UserRole.Admin) || newRoles.Contains(UserRole.DeanOffice))
+            {
+                if (!currentRoles.Contains(UserRole.Admin))
+                    throw new ForbiddenAccessException("Only Admin can assign Admin or DeanOffice roles");
+            }
 
             _dbContext.UserRoles.RemoveRange(user.UserRoles);
 

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using tsu_absences_api.Services;
 using tsu_absences_api.Models;
+using tsu_absences_api.DTOs;
 
 [ApiController]
 [Route("api/users")]
@@ -39,13 +40,13 @@ public class UsersController : ControllerBase
     [Authorize(Roles = "Admin, DeanOffice")]
     public async Task<IActionResult> DeleteUser(Guid id)
     {
-        await _userService.DeleteUser(id);
+        await _userService.DeleteUser(id, User);
         return NoContent();
     }
 
     [HttpPut("{id:guid}")]
     [Authorize(Roles = "Admin, DeanOffice")]
-    public async Task<IActionResult> UpdateUser(Guid id, [FromBody] UserDto updatedUser)
+    public async Task<IActionResult> UpdateUser(Guid id, [FromBody] UserUpdateDto updatedUser)
     {
         var user = await _userService.UpdateUser(id, updatedUser);
         return Ok(user);
@@ -55,7 +56,7 @@ public class UsersController : ControllerBase
     [Authorize(Roles = "Admin, DeanOffice")]
     public async Task<IActionResult> UpdateUserRole(Guid id, [FromBody] List<UserRole> roles)
     {
-        await _userService.UpdateUserRoles(id, roles);
+        await _userService.UpdateUserRoles(id, roles, User);
         return Ok(new { Message = "User roles updated successfully" });
     }
 }
