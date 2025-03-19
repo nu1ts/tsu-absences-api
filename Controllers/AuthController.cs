@@ -4,15 +4,15 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 
-namespace blog_api.Controllers
+namespace tsu_absences_api.Controllers
 {
     [ApiController]
     [Route("api/account")]
-    public class UserController : ControllerBase
+    public class AuthController : ControllerBase
     {
         private readonly UserService _userService;
 
-        public UserController(UserService userService)
+        public AuthController(UserService userService)
         {
             _userService = userService;
         }
@@ -64,42 +64,22 @@ namespace blog_api.Controllers
 
             return Ok(response);
         }
-        
+
         [HttpGet("profile")]
         [Authorize]
         [Produces("application/json")]
-        [ProducesResponseType(typeof(UserDto), 200)]
-        [ProducesResponseType(typeof(void), 401)]
+        [ProducesResponseType(typeof(Response), 200)]
+        [ProducesResponseType(typeof(void),401)]
         [ProducesResponseType(typeof(Response), 500)]
         public async Task<IActionResult> GetProfile()
         {
-            var userIdClaim = User.Claims.FirstOrDefault(claim => claim.Type == "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier")?.Value;
+            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 
-            if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
-                return Unauthorized();
+            if (userId == null)
+                return Unauthorized(new { message = "User ID not found in token" });
 
-            var user = await _userService.GetUserProfile(userId);
-
+            var user = await _userService.GetUserById(Guid.Parse(userId));
             return Ok(user);
         }
-
-        /*[HttpGet("roles")]
-        [Authorize]
-        public IActionResult GetRoles()
-        {
-            var roles = User.Claims
-                .Where(c => c.Type == ClaimTypes.Role)
-                .Select(c => c.Value)
-                .ToList();
-
-            return Ok(roles);
-        }
-
-        [HttpGet("admin-only")]
-        [Authorize(Roles = "Admin")]
-        public IActionResult AdminOnly()
-        {
-            return Ok("This method is accessible only by Admins.");
-        }*/
     }
 }

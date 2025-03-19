@@ -15,6 +15,11 @@ public class BlacklistService
     
     public async Task AddToken(string token, DateTime expirationDate)
     {
+        token = token.Trim(); 
+        
+        if (await _dbContext.BlacklistedTokens.AnyAsync(t => t.Token == token))
+            return;
+        
         var blacklistedToken = new BlacklistedToken
         {
             Token = token,
@@ -27,14 +32,21 @@ public class BlacklistService
     
     public async Task<bool> IsTokenBlacklisted(string token)
     {
+        token = token.Trim();
+
         var blacklistedToken = await _dbContext.BlacklistedTokens
+            .AsNoTracking()
             .FirstOrDefaultAsync(t => t.Token == token);
 
         if (blacklistedToken == null)
+        {
             return false;
+        }
 
         if (blacklistedToken.ExpirationDate >= DateTime.UtcNow)
+        {
             return true;
+        }
 
         _dbContext.BlacklistedTokens.Remove(blacklistedToken);
         await _dbContext.SaveChangesAsync();
