@@ -79,8 +79,15 @@ builder.Services.AddSwaggerGen(option =>
 
 var app = builder.Build();
 
-app.UseSwagger();
-app.UseSwaggerUI();
+if (app.Environment.IsDevelopment() || app.Environment.IsProduction())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI(options =>
+    {
+        options.SwaggerEndpoint("/swagger/v1/swagger.json", "TSU Absences API v1");
+        options.RoutePrefix = "swagger";
+    });
+}
 
 using (var scope = app.Services.CreateScope())
 {
