@@ -2,6 +2,7 @@ using tsu_absences_api.Models;
 using tsu_absences_api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace tsu_absences_api.Controllers
 {
@@ -62,6 +63,23 @@ namespace tsu_absences_api.Controllers
             var response = await _userService.LogoutUser(token);
 
             return Ok(response);
+        }
+
+        [HttpGet("profile")]
+        [Authorize]
+        [Produces("application/json")]
+        [ProducesResponseType(typeof(Response), 200)]
+        [ProducesResponseType(typeof(void),401)]
+        [ProducesResponseType(typeof(Response), 500)]
+        public async Task<IActionResult> GetProfile()
+        {
+            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+            if (userId == null)
+                return Unauthorized(new { message = "User ID not found in token" });
+
+            var user = await _userService.GetUserById(Guid.Parse(userId));
+            return Ok(user);
         }
     }
 }
