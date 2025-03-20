@@ -37,9 +37,9 @@ public class AbsencesController(IAbsenceService absenceService) : ControllerBase
         {
             return BadRequest(new ErrorResponse { Status = "400", Message = ex.Message });
         }
-        catch (UnauthorizedAccessException)
+        catch (UnauthorizedAccessException ex)
         {
-            return Unauthorized(new ErrorResponse { Status = "401", Message = "You aren't authorized." });
+            return Unauthorized(new ErrorResponse { Status = "401", Message = ex.Message });
         }
         catch (Exception)
         {

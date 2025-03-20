@@ -1,5 +1,13 @@
 ﻿FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
-USER $APP_UID
+ARG APP_UID=1000
+RUN groupadd -g $APP_UID tsugroup && useradd -r -u $APP_UID -g tsugroup tsuuser
+
+USER root
+RUN mkdir /app && chown -R tsuuser:tsugroup /app
+
+RUN mkdir /app/app_data && chown -R tsuuser:tsugroup /app/app_data
+
+USER tsuuser
 WORKDIR /app
 
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
@@ -18,4 +26,9 @@ RUN dotnet publish "tsu-absences-api.csproj" -c $BUILD_CONFIGURATION -o /app/pub
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
+
+USER root
+RUN chown -R tsuuser:tsugroup /app
+USER tsuuser
+
 ENTRYPOINT ["dotnet", "tsu-absences-api.dll"]

@@ -39,7 +39,7 @@ jobs:
 
       - name: ✨ Fix whitespace issues
         run: dotnet format whitespace /home/runner/work/tsu-absences-api/tsu-absences-api/tsu-absences-api.sln
-         
+
       - name: 🎨 Code style check (dotnet format)
         run: dotnet format --verify-no-changes /home/runner/work/tsu-absences-api/tsu-absences-api/tsu-absences-api.sln
         continue-on-error: false
@@ -77,4 +77,11 @@ jobs:
             sudo docker pull nu1ts/tsu-absences-api:latest
             sudo docker stop tsu-absences-api || true
             sudo docker rm tsu-absences-api || true
-            sudo docker run -d --name tsu-absences-api -p :5000 --network="host" nu1ts/tsu-absences-api:latest
+            sudo docker volume create tsu_app_data
+            sudo docker run -d \
+              --name tsu-absences-api \
+              -p :5000 \
+              --network="host" \
+              --user 1000:1000 \
+              -v tsu_app_data:/app/app_data \
+              nu1ts/tsu-absences-api:latest
