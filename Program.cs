@@ -73,6 +73,20 @@ builder.Services.AddSwaggerGen(option =>
     option.OperationFilter<AuthorizeCheckOperationFilter>();
 });
 
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowSpecificOrigin", policy =>
+    {
+        policy.WithOrigins(
+                "http://localhost:8081",
+                "http://localhost:8080",
+                "https://absences.tsu.ru")
+            .AllowAnyMethod()
+            .AllowAnyHeader(); 
+    });
+});
+
+
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment() || app.Environment.IsProduction())
@@ -92,13 +106,14 @@ using (var scope = app.Services.CreateScope())
 
 app.UseHttpsRedirection();
 
+app.UseCors("AllowSpecificOrigin"); 
+
 app.MapControllers();
 app.UseMiddleware<ErrorHandlingMiddleware>();
-
 
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
 
-app.Run();
+app.Run("http://0.0.0.0:5000");
