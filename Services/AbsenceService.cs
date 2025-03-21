@@ -1,15 +1,17 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.AspNetCore.SignalR;
+using Microsoft.EntityFrameworkCore;
 using OfficeOpenXml;
 using tsu_absences_api.Data;
 using tsu_absences_api.DTOs;
 using tsu_absences_api.Enums;
 using tsu_absences_api.Exceptions;
+using tsu_absences_api.Hubs;
 using tsu_absences_api.Interfaces;
 using tsu_absences_api.Models;
 
 namespace tsu_absences_api.Services;
 
-public class AbsenceService(AppDbContext context, IFileService fileService) : IAbsenceService
+public class AbsenceService(AppDbContext context, IHubContext<NotificationHub> notificationHub, IFileService fileService) : IAbsenceService
 {
     public async Task<Absence> CreateAbsenceAsync(Guid userId, CreateAbsenceDto dto)
     {
@@ -51,6 +53,8 @@ public class AbsenceService(AppDbContext context, IFileService fileService) : IA
             }
             await context.SaveChangesAsync();
         }
+
+        await notificationHub.Clients.Group("DeanOffice").SendAsync("AbsenceCreated", absence.Id);
 
         return absence;
     }
@@ -321,6 +325,8 @@ public class AbsenceService(AppDbContext context, IFileService fileService) : IA
 
         absence.Status = AbsenceStatus.Approved;
     
+        await notificationHub.Clients.Group("Students").SendAsync("AbsenceApproved");
+        
         await context.SaveChangesAsync();
     }
     
