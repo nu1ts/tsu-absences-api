@@ -76,6 +76,21 @@ builder.Services.AddSwaggerGen(option =>
     option.OperationFilter<AuthorizeCheckOperationFilter>();
 });
 
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowSpecificOrigin", policy =>
+    {
+        policy.WithOrigins(
+                "http://localhost:8081",
+                "http://localhost:8080",
+                "https://absences.tsu.ru")
+            .AllowCredentials()
+            .AllowAnyMethod()
+            .AllowAnyHeader(); 
+    });
+});
+
+
 var app = builder.Build();
 
 app.UseSwagger();
@@ -95,6 +110,6 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
-app.MapHub<NotificationHub>("/notificationHub");
+app.MapHub<NotificationHub>("/notification");
 
 app.Run();
