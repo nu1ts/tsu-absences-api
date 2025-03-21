@@ -5,6 +5,7 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using tsu_absences_api;
 using tsu_absences_api.Data;
+using tsu_absences_api.Hubs;
 using tsu_absences_api.Middleware;
 using tsu_absences_api.Options;
 using tsu_absences_api.Interfaces;
@@ -56,10 +57,12 @@ builder.Services.AddScoped<TokenService>();
 
 builder.Services.AddControllers();
 
+builder.Services.AddSignalR();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(option =>
 {
     option.SwaggerDoc("v1", new OpenApiInfo { Title = "TSU Absences API", Version = "v1" });
+    option.AddSignalRSwaggerGen();
     option.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         In = ParameterLocation.Header,
@@ -88,10 +91,10 @@ app.UseHttpsRedirection();
 app.MapControllers();
 app.UseMiddleware<ErrorHandlingMiddleware>();
 
-
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHub<NotificationHub>("/notificationHub");
 
 app.Run();
