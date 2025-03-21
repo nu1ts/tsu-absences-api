@@ -84,6 +84,7 @@ builder.Services.AddCors(options =>
                 "http://localhost:8081",
                 "http://localhost:8080",
                 "https://absences.tsu.ru")
+            .AllowCredentials()
             .AllowAnyMethod()
             .AllowAnyHeader(); 
     });
@@ -118,6 +119,6 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
-app.MapHub<NotificationHub>("/notificationHub");
+app.MapHub<NotificationHub>("/notification");
 
 app.Run("http://0.0.0.0:5000");

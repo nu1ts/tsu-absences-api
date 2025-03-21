@@ -3,7 +3,7 @@ using SignalRSwaggerGen.Attributes;
 
 namespace tsu_absences_api.Hubs;
 
-[SignalRHub("notification")]
+[SignalRHub("/notification")]
 public class NotificationHub : Hub
 {
     [SignalRMethod("join")]
