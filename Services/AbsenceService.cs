@@ -11,7 +11,7 @@ using tsu_absences_api.Models;
 
 namespace tsu_absences_api.Services;
 
-public class AbsenceService(AppDbContext context, IHubContext<NotificationHub> notificationHub, IFileService fileService) : IAbsenceService
+public class AbsenceService(AppDbContext context, NotificationHub hubContext, IFileService fileService) : IAbsenceService
 {
     public async Task<Absence> CreateAbsenceAsync(Guid userId, CreateAbsenceDto dto)
     {
@@ -53,8 +53,8 @@ public class AbsenceService(AppDbContext context, IHubContext<NotificationHub> n
             }
             await context.SaveChangesAsync();
         }
-
-        await notificationHub.Clients.Group("DeanOffice").SendAsync("AbsenceCreated", absence.Id);
+        
+        await hubContext.Clients.Group("DeanOffice").SendAsync("AbsenceCreated", absence.Id);
 
         return absence;
     }
@@ -156,6 +156,9 @@ public class AbsenceService(AppDbContext context, IHubContext<NotificationHub> n
         }
 
         absence.UpdatedAt = DateTime.UtcNow;
+        
+        await hubContext.Clients.Group("Students").SendAsync("AbsenceUpdated");
+        await hubContext.Clients.Group("DeanOffice").SendAsync("AbsenceUpdated");
 
         await context.SaveChangesAsync();
     }
@@ -324,8 +327,8 @@ public class AbsenceService(AppDbContext context, IHubContext<NotificationHub> n
             throw new ArgumentException("Absence is in an invalid state for approval.");
 
         absence.Status = AbsenceStatus.Approved;
-    
-        await notificationHub.Clients.Group("Students").SendAsync("AbsenceApproved");
+
+        await hubContext.Clients.Group("Students").SendAsync("AbsenceApproved");
         
         await context.SaveChangesAsync();
     }
@@ -346,6 +349,8 @@ public class AbsenceService(AppDbContext context, IHubContext<NotificationHub> n
         absence.Status = AbsenceStatus.Rejected;
         absence.RejectionReason = reason;
 
+        await hubContext.Clients.Group("Students").SendAsync("AbsenceRejected");
+        
         await context.SaveChangesAsync();
     }
     
@@ -423,6 +428,9 @@ public class AbsenceService(AppDbContext context, IHubContext<NotificationHub> n
         else
             absence.Status = AbsenceStatus.Pending;
 
+        await hubContext.Clients.Group("Students").SendAsync("AbsenceExtended");
+        await hubContext.Clients.Group("DeanOffice").SendAsync("AbsenceExtended");
+        
         await context.SaveChangesAsync();
     }
     

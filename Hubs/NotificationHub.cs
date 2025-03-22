@@ -17,14 +17,4 @@ public class NotificationHub : Hub
     {
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, groupName);
     }
-    
-    public async Task NotifyAbsenceCreated(Guid absenceId)
-    {
-        await Clients.Group("DeanOffice").SendAsync("AbsenceCreated", absenceId);
-    }
-    
-    public async Task NotifyAbsenceApproved()
-    {
-        await Clients.Group("Students").SendAsync("AbsenceApproved");
-    }
 }
